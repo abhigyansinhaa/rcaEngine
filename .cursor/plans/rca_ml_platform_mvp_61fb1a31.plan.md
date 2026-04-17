@@ -4,31 +4,31 @@ overview: A local-MVP, scalable-ready web platform with FastAPI + React/Vite whe
 todos:
   - id: scaffold
     content: "Scaffold repo: backend/, frontend/, docker-compose.yml, README.md, .gitignore, data/ dirs"
-    status: pending
+    status: completed
   - id: backend_core
     content: "Backend core: FastAPI app, config, SQLAlchemy engine/session, SQLite, CORS, health endpoint"
-    status: pending
+    status: completed
   - id: auth
     content: Implement User model, JWT auth (register/login), password hashing, get_current_user dependency
-    status: pending
+    status: completed
   - id: datasets_api
     content: Dataset upload/list/preview/delete endpoints with schema inference and local file storage
-    status: pending
+    status: completed
   - id: ml_pipeline
     content: "ML pipeline: task auto-detection, preprocessing, XGBoost training, metrics"
-    status: pending
+    status: completed
   - id: explain
     content: SHAP + feature importance computation and summary artifact (JSON + PNG)
-    status: pending
+    status: completed
   - id: insights_recs
     content: Rule-based insights and business-friendly recommendations generator
-    status: pending
+    status: completed
   - id: analyses_api
     content: Analyses endpoints with BackgroundTasks orchestration and status polling
-    status: pending
+    status: completed
   - id: frontend_scaffold
     content: "Frontend scaffold: Vite + React + TS + Tailwind + Router + Query + axios + AuthContext"
-    status: pending
+    status: in_progress
   - id: frontend_auth
     content: Login/Register pages + protected routes
     status: pending
