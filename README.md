@@ -67,6 +67,7 @@ Open http://localhost:5000 — the dev server proxies `/api` and `/artifacts` to
 | GET | `/api/datasets` | List datasets |
 | GET | `/api/datasets/{id}` | Dataset + schema |
 | GET | `/api/datasets/{id}/preview` | Preview rows |
+| POST | `/api/datasets/{id}/profile` | `{ "target" }` — suitability checks (no training) |
 | DELETE | `/api/datasets/{id}` | Delete dataset + analyses |
 | POST | `/api/datasets/{id}/analyses` | `{ target, test_size?, max_rows? }` |
 | GET | `/api/analyses/{id}` | Analysis status and results |
@@ -83,6 +84,17 @@ backend/sql/          # MySQL schema initialization script
 
 ## Notes
 
-- **Scaling:** Analysis runs in FastAPI `BackgroundTasks` for the MVP; swap to Celery/RQ later without changing the REST contract much.  
-- **SHAP:** Uses `TreeExplainer` on the trained XGBoost model; plots are saved per analysis under `data/artifacts/{analysis_id}/`.  
+- **Scaling:** With `REDIS_URL` set (see Docker Compose), analyses run on an **RQ worker**; otherwise they use FastAPI `BackgroundTasks`.  
+- **Models:** Sklearn `Pipeline` (imputation, scaling, one-hot) plus routed models: **XGBoost**, **Random Forest**, or **Elastic Net / Logistic Regression** depending on dataset size and task.  
+- **Profiling:** `POST /api/datasets/{id}/profile` with `{ "target": "column_name" }` returns suitability checks before training.  
+- **Report:** Completed analyses include a structured `report` (dataset health, model choice, CV hints, grouped drivers).  
+- **Database migration:** If you created the DB before `report_json` existed, run [backend/sql/migration_002_add_report_json.sql](backend/sql/migration_002_add_report_json.sql).  
+- **SHAP:** Tree models use `TreeExplainer`; linear baselines use coefficients and/or permutation importance. Plots are saved under `data/artifacts/{analysis_id}/`.  
 - **Causal language:** Outputs are **associative** (model-based), not proven causal effects.  
+
+## Tests
+
+```bash
+cd backend
+python -m pytest tests -q
+```

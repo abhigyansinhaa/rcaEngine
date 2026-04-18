@@ -2,6 +2,7 @@ import { type FormEvent, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AxiosError } from 'axios'
 import { useAuth } from '../auth/AuthContext'
+import { Button, Card, Input, PageHeader } from '../components/ui'
 
 export function Register() {
   const { register } = useAuth()
@@ -42,48 +43,47 @@ export function Register() {
   }
 
   return (
-    <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <h1 className="text-2xl font-bold">Create account</h1>
-      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Start uploading datasets and running RCA.</p>
-      <form onSubmit={onSubmit} className="mt-6 space-y-4">
-        <div>
-          <label className="block text-sm font-medium">Email</label>
-          <input
+    <div className="mx-auto max-w-md">
+      <PageHeader
+        title="Create your account"
+        description="Upload datasets and run interpretable root-cause analysis in one place."
+      />
+      <Card padding="lg" elevated className="mt-8">
+        <form onSubmit={onSubmit} className="space-y-4">
+          <Input
+            label="Email"
             type="email"
             required
             autoComplete="email"
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-950"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-        </div>
-        <div>
-          <label className="block text-sm font-medium">Password (min 8)</label>
-          <input
+          <Input
+            label="Password"
+            hint="At least 8 characters"
             type="password"
             required
             minLength={8}
             autoComplete="new-password"
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-950"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-        </div>
-        {err && <p className="text-sm text-red-600">{err}</p>}
-        <button
-          type="submit"
-          disabled={busy}
-          className="w-full rounded-lg bg-emerald-600 py-2.5 font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
-        >
-          {busy ? 'Creating…' : 'Register'}
-        </button>
-      </form>
-      <p className="mt-4 text-center text-sm text-slate-600 dark:text-slate-400">
-        Already have an account?{' '}
-        <Link className="text-emerald-700 hover:underline dark:text-emerald-400" to="/login">
-          Log in
-        </Link>
-      </p>
+          {err && (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+              {err}
+            </p>
+          )}
+          <Button type="submit" disabled={busy} className="w-full">
+            {busy ? 'Creating…' : 'Register'}
+          </Button>
+        </form>
+        <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
+          Already have an account?{' '}
+          <Link className="font-medium text-brand-700 hover:underline dark:text-brand-400" to="/login">
+            Log in
+          </Link>
+        </p>
+      </Card>
     </div>
   )
 }

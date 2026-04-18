@@ -94,6 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
+/** Hook for auth state; colocated with provider for a single import path. */
+// eslint-disable-next-line react-refresh/only-export-components -- useAuth must live next to AuthProvider
 export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth outside AuthProvider')

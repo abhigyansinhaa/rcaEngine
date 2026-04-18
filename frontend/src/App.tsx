@@ -5,6 +5,7 @@ import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AnalysisResult } from './pages/AnalysisResult'
 import { Dashboard } from './pages/Dashboard'
+import { Datasets } from './pages/Datasets'
 import { DatasetDetail } from './pages/DatasetDetail'
 import { Login } from './pages/Login'
 import { Register } from './pages/Register'
@@ -26,6 +27,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/datasets"
+                element={
+                  <ProtectedRoute>
+                    <Datasets />
                   </ProtectedRoute>
                 }
               />

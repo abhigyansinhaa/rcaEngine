@@ -1,4 +1,10 @@
 services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
   mysql:
     image: mysql:8.4
     restart: unless-stopped
@@ -27,10 +33,28 @@ services:
     environment:
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
       DATABASE_URL: mysql+pymysql://rca_user:rca_pass@mysql:3306/rca_db
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       mysql:
         condition: service_healthy
+      redis:
+        condition: service_started
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  worker:
+    build: ./backend
+    volumes:
+      - ./data:/app/data
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+      DATABASE_URL: mysql+pymysql://rca_user:rca_pass@mysql:3306/rca_db
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: ["rq", "worker", "default", "--url", "redis://redis:6379/0"]
 
   frontend:
     build: ./frontend

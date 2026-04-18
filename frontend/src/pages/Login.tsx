@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { Button, Card, Input, PageHeader } from '../components/ui'
 
 export function Login() {
   const { login } = useAuth()
@@ -28,47 +29,45 @@ export function Login() {
   }
 
   return (
-    <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <h1 className="text-2xl font-bold">Log in</h1>
-      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Access your datasets and analyses.</p>
-      <form onSubmit={onSubmit} className="mt-6 space-y-4">
-        <div>
-          <label className="block text-sm font-medium">Email</label>
-          <input
+    <div className="mx-auto max-w-md">
+      <PageHeader
+        title="Welcome back"
+        description="Sign in to run analyses and review root-cause insights."
+      />
+      <Card padding="lg" elevated className="mt-8">
+        <form onSubmit={onSubmit} className="space-y-4">
+          <Input
+            label="Email"
             type="email"
             required
             autoComplete="email"
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-950"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-        </div>
-        <div>
-          <label className="block text-sm font-medium">Password</label>
-          <input
+          <Input
+            label="Password"
             type="password"
             required
             autoComplete="current-password"
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-950"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-        </div>
-        {err && <p className="text-sm text-red-600">{err}</p>}
-        <button
-          type="submit"
-          disabled={busy}
-          className="w-full rounded-lg bg-emerald-600 py-2.5 font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
-        >
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
-      <p className="mt-4 text-center text-sm text-slate-600 dark:text-slate-400">
-        No account?{' '}
-        <Link className="text-emerald-700 hover:underline dark:text-emerald-400" to="/register">
-          Register
-        </Link>
-      </p>
+          {err && (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+              {err}
+            </p>
+          )}
+          <Button type="submit" disabled={busy} className="w-full">
+            {busy ? 'Signing in…' : 'Sign in'}
+          </Button>
+        </form>
+        <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
+          No account?{' '}
+          <Link className="font-medium text-brand-700 hover:underline dark:text-brand-400" to="/register">
+            Create one
+          </Link>
+        </p>
+      </Card>
     </div>
   )
 }

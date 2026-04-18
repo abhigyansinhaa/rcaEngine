@@ -70,6 +70,7 @@ class AnalysisOut(BaseModel):
     feature_importance: list[dict[str, Any]] | None = None
     shap_summary: list[dict[str, Any]] | None = None
     shap_summary_image_url: str | None = None
+    report: dict[str, Any] | None = None
     error: str | None = None
     created_at: datetime
     completed_at: datetime | None = None
@@ -81,3 +82,16 @@ class ColumnSchemaJson(BaseModel):
     """Stored in DB as JSON string."""
 
     columns: list[ColumnSchema]
+
+
+class DatasetProfileRequest(BaseModel):
+    target: str
+
+
+class DatasetProfileOut(BaseModel):
+    ok: bool
+    blocking_errors: list[str]
+    warnings: list[str]
+    dataset_health: dict[str, Any]
+    target_suitability: dict[str, Any]
+    task_type_hint: str | None = None

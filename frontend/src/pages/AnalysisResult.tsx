@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   Bar,
@@ -11,29 +11,26 @@ import {
   YAxis,
 } from 'recharts'
 import { api } from '../api/client'
+import { Button, Card, ErrorState, LoadingState, PageHeader } from '../components/ui'
 import type { Analysis } from '../types'
 
 export function AnalysisResult() {
   const { id } = useParams<{ id: string }>()
   const analysisId = Number(id)
 
-  const [poll, setPoll] = useState(true)
-
-  const { data, error, refetch } = useQuery({
+  const { data, error, refetch, isLoading } = useQuery({
     queryKey: ['analysis', analysisId],
     queryFn: async () => {
       const { data } = await api.get<Analysis>(`/analyses/${analysisId}`)
       return data
     },
     enabled: Number.isFinite(analysisId),
-    refetchInterval: poll ? 2000 : false,
+    refetchInterval: (q) => {
+      const s = q.state.data?.status
+      if (s === 'completed' || s === 'failed') return false
+      return 2000
+    },
   })
-
-  useEffect(() => {
-    if (data?.status === 'completed' || data?.status === 'failed') {
-      setPoll(false)
-    }
-  }, [data?.status])
 
   const chartData = useMemo(() => {
     const fi = data?.feature_importance
@@ -60,128 +57,170 @@ export function AnalysisResult() {
   }
 
   if (!Number.isFinite(analysisId)) {
-    return <p className="text-red-600">Invalid analysis id.</p>
+    return (
+      <Card padding="lg" className="border-red-200 dark:border-red-900/50">
+        <p className="text-sm font-medium text-red-800 dark:text-red-300">Invalid analysis id.</p>
+      </Card>
+    )
   }
 
   if (error) {
-    return <p className="text-red-600">Could not load analysis.</p>
+    return (
+      <ErrorState
+        title="Could not load analysis"
+        message="The report may not exist or the server returned an error."
+        onRetry={() => void refetch()}
+      />
+    )
   }
 
-  if (!data) {
-    return <p className="text-slate-500">Loading…</p>
+  if (isLoading || !data) {
+    return <LoadingState rows={2} message="Loading analysis…" />
   }
 
   const running = data.status === 'queued' || data.status === 'running'
 
   return (
-    <div>
-      <Link className="text-sm text-emerald-700 hover:underline dark:text-emerald-400" to={`/datasets/${data.dataset_id}`}>
-        ← Dataset
-      </Link>
-      <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Analysis #{data.id}</h1>
-          <p className="text-slate-600 dark:text-slate-400">
-            Target: <code className="font-mono">{data.target}</code>
-            {data.task_type && (
-              <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs dark:bg-slate-800">
-                {data.task_type}
+    <div className="space-y-8">
+      <div>
+        <Link
+          className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+          to={`/datasets/${data.dataset_id}`}
+        >
+          ← Dataset
+        </Link>
+        <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <PageHeader
+            title={`Analysis #${data.id}`}
+            description={
+              <>
+                Target: <code className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-sm dark:bg-slate-800">{data.target}</code>
+                {data.task_type && (
+                  <span className="ml-2 inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    {data.task_type}
+                  </span>
+                )}
+              </>
+            }
+          />
+          <div className="flex flex-wrap gap-2">
+            {running && (
+              <span className="inline-flex items-center rounded-xl bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 dark:bg-amber-950/60 dark:text-amber-200">
+                {data.status}…
               </span>
             )}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {running && (
-            <span className="rounded-lg bg-amber-100 px-3 py-1.5 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-              {data.status}…
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={downloadJson}
-            disabled={data.status !== 'completed'}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-800"
-          >
-            Download report (JSON)
-          </button>
+            <Button variant="secondary" size="sm" type="button" onClick={downloadJson} disabled={data.status !== 'completed'}>
+              Download JSON
+            </Button>
+          </div>
         </div>
       </div>
 
       {data.error && (
-        <div className="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
-          {data.error}
-        </div>
+        <Card padding="md" className="border-amber-200 bg-amber-50/80 dark:border-amber-900/40 dark:bg-amber-950/30">
+          <p className="text-sm text-amber-950 dark:text-amber-100">{data.error}</p>
+        </Card>
       )}
 
       {data.status === 'failed' && (
-        <p className="mt-6 text-red-600">
-          Analysis failed.{' '}
-          <button type="button" className="underline" onClick={() => void refetch()}>
-            Retry check
-          </button>
-        </p>
+        <ErrorState
+          title="We couldn’t finish this analysis"
+          message={
+            data.error ||
+            data.report?.user_message ||
+            'Something went wrong on our side. Please try again in a moment or pick a different target column.'
+          }
+          onRetry={() => void refetch()}
+          retryLabel="Refresh status"
+        />
+      )}
+
+      {data.status === 'completed' && data.report?.user_message && (
+        <Card padding="md" className="border-brand-200 bg-brand-50/60 dark:border-brand-900/40 dark:bg-brand-950/25">
+          <p className="text-sm font-medium text-brand-950 dark:text-brand-100">{data.report.user_message}</p>
+          {data.report.fallbacks && data.report.fallbacks.length > 0 && (
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-brand-900/90 dark:text-brand-200/90">
+              {data.report.fallbacks.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          )}
+        </Card>
       )}
 
       {data.status === 'completed' && data.metrics && (
-        <section className="mt-8">
-          <h2 className="text-lg font-semibold">Metrics</h2>
-          <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Metrics</h2>
+          <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {Object.entries(data.metrics).map(([k, v]) => (
-              <div key={k} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                <dt className="text-xs uppercase tracking-wide text-slate-500">{k}</dt>
-                <dd className="text-xl font-semibold">
+              <Card key={k} padding="md" elevated>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{k}</dt>
+                <dd className="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
                   {typeof v === 'number' ? v.toFixed(4) : String(v)}
                 </dd>
-              </div>
+              </Card>
             ))}
           </dl>
         </section>
       )}
 
       {data.status === 'completed' && chartData.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold">Feature importance (mean |SHAP|)</h2>
-          <div className="mt-4 h-96 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 16 }}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-40" />
-                <XAxis type="number" />
-                <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
-                <Tooltip
-                  formatter={(value) => [
-                    typeof value === 'number' ? value.toFixed(4) : String(value ?? ''),
-                    '|SHAP|',
-                  ]}
-                  labelFormatter={(_, payload) =>
-                    payload?.[0]?.payload?.full ? String(payload[0].payload.full) : ''
-                  }
-                />
-                <Bar dataKey="importance" fill="#059669" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+        <section>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Feature importance (mean |SHAP|)</h2>
+          <Card padding="md" className="mt-4">
+            <div className="h-96 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" className="opacity-60" />
+                  <XAxis type="number" tick={{ fill: 'currentColor', fontSize: 11 }} className="text-slate-500" />
+                  <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: 'currentColor' }} className="text-slate-600" />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: '12px',
+                      border: '1px solid rgb(226 232 240)',
+                      boxShadow: 'var(--shadow-soft)',
+                    }}
+                    formatter={(value) => [
+                      typeof value === 'number' ? value.toFixed(4) : String(value ?? ''),
+                      '|SHAP|',
+                    ]}
+                    labelFormatter={(_, payload) =>
+                      payload?.[0]?.payload?.full ? String(payload[0].payload.full) : ''
+                    }
+                  />
+                  <Bar dataKey="importance" fill="var(--chart-primary)" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
         </section>
       )}
 
       {data.status === 'completed' && data.shap_summary_image_url && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold">SHAP summary plot</h2>
-          <img
-            src={data.shap_summary_image_url}
-            alt="SHAP summary"
-            className="mt-4 max-w-full rounded-xl border border-slate-200 dark:border-slate-800"
-          />
+        <section>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">SHAP summary plot</h2>
+          <Card padding="md" className="mt-4">
+            <img
+              src={data.shap_summary_image_url}
+              alt="SHAP summary"
+              className="max-w-full rounded-xl border border-slate-200 dark:border-slate-800"
+            />
+          </Card>
         </section>
       )}
 
       {data.status === 'completed' && data.insights && data.insights.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold">Root-cause insights</h2>
-          <ul className="mt-4 list-decimal space-y-3 pl-5">
+        <section>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Root-cause insights</h2>
+          <ul className="mt-4 space-y-3">
             {data.insights.map((ins, i) => (
-              <li key={i} className="text-slate-700 dark:text-slate-300">
-                <span className="font-mono text-sm text-emerald-800 dark:text-emerald-400">{ins.feature}</span>
-                <p className="mt-1 whitespace-pre-wrap">{ins.summary}</p>
+              <li key={i}>
+                <Card padding="md">
+                  <span className="font-mono text-sm font-medium text-brand-800 dark:text-brand-400">{ins.feature}</span>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                    {ins.summary}
+                  </p>
+                </Card>
               </li>
             ))}
           </ul>
@@ -189,15 +228,17 @@ export function AnalysisResult() {
       )}
 
       {data.status === 'completed' && data.recommendations && data.recommendations.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold">Recommendations</h2>
-          <ol className="mt-4 list-decimal space-y-2 pl-5">
-            {data.recommendations.map((r, i) => (
-              <li key={i} className="text-slate-700 dark:text-slate-300">
-                {r}
-              </li>
-            ))}
-          </ol>
+        <section>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Recommendations</h2>
+          <Card padding="md" className="mt-4">
+            <ol className="list-decimal space-y-3 pl-5 text-sm text-slate-700 dark:text-slate-300">
+              {data.recommendations.map((r, i) => (
+                <li key={i} className="leading-relaxed">
+                  {r}
+                </li>
+              ))}
+            </ol>
+          </Card>
         </section>
       )}
     </div>

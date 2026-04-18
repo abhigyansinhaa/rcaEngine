@@ -1,0 +1,30 @@
+import type { ReactNode } from 'react'
+import { Card } from './Card'
+
+type Props = {
+  title: string
+  description?: string
+  icon?: ReactNode
+  action?: ReactNode
+}
+
+export function EmptyState({ title, description, icon, action }: Props) {
+  return (
+    <Card padding="lg" className="border-dashed border-slate-300/80 dark:border-slate-600/80">
+      <div className="flex flex-col items-center text-center sm:flex-row sm:items-start sm:text-left sm:gap-6">
+        {icon && (
+          <div className="mb-4 flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/50 dark:text-brand-400 sm:mb-0">
+            {icon}
+          </div>
+        )}
+        <div className="flex-1">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h2>
+          {description && (
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{description}</p>
+          )}
+          {action && <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">{action}</div>}
+        </div>
+      </div>
+    </Card>
+  )
+}

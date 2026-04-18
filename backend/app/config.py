@@ -27,6 +27,9 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:5000", "http://127.0.0.1:5000"]
 
+    # If set (e.g. redis://redis:6379/0), analysis jobs run via RQ worker; otherwise FastAPI BackgroundTasks.
+    redis_url: str | None = Field(default=None)
+
     @model_validator(mode="after")
     def set_subdirs(self) -> "Settings":
         object.__setattr__(self, "uploads_dir", self.data_dir / "uploads")

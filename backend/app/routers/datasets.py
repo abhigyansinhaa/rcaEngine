@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import get_current_user
 from app.models import Analysis, Dataset, User
-from app.schemas import ColumnSchema, DatasetOut
+from app.ml.profile import profile_dataset_for_target
+from app.schemas import ColumnSchema, DatasetOut, DatasetProfileOut, DatasetProfileRequest
 from app.storage import delete_file, ensure_dirs, remove_artifact_dir, save_upload
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -122,6 +123,30 @@ def get_dataset(
     if ds is None:
         raise HTTPException(status_code=404, detail="Dataset not found")
     return _dataset_to_out(ds)
+
+
+@router.post("/{dataset_id}/profile", response_model=DatasetProfileOut)
+def profile_dataset_target(
+    dataset_id: int,
+    body: DatasetProfileRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Any:
+    """Run dataset + target suitability checks without training."""
+    ds = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.user_id == current_user.id).first()
+    if ds is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    df = _load_dataframe(ds.storage_path, ds.file_format)
+    column_meta = json.loads(ds.columns_json)
+    pr = profile_dataset_for_target(df, body.target, column_meta)
+    return DatasetProfileOut(
+        ok=pr.ok,
+        blocking_errors=pr.blocking_errors,
+        warnings=pr.warnings,
+        dataset_health=pr.dataset_health,
+        target_suitability=pr.target_suitability,
+        task_type_hint=pr.task_type,
+    )
 
 
 @router.get("/{dataset_id}/preview")

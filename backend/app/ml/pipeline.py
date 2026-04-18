@@ -1,4 +1,4 @@
-"""Train XGBoost with tabular preprocessing; auto-detect classification vs regression."""
+"""Train models with sklearn Pipeline, routing, and cross-validated metrics."""
 
 from __future__ import annotations
 
@@ -8,7 +8,10 @@ from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.impute import SimpleImputer
+from sklearn.linear_model import ElasticNet, LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
     f1_score,
@@ -17,18 +20,21 @@ from sklearn.metrics import (
     roc_auc_score,
     r2_score,
 )
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import StratifiedKFold, KFold, cross_val_score, train_test_split
+from sklearn.pipeline import Pipeline as SkPipeline
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from xgboost import XGBClassifier, XGBRegressor
 
-TaskType = Literal["classification", "regression"]
+from app.ml.common import TaskType, detect_task_type
+
+ModelKind = Literal["xgboost", "random_forest", "logistic_regression", "elastic_net"]
 
 
 @dataclass
 class TrainResult:
     task_type: TaskType
     metrics: dict[str, float]
-    model: XGBClassifier | XGBRegressor
+    model: Any  # fitted sklearn Pipeline ending in an estimator with tree or linear SHAP support
     X_test: np.ndarray
     y_test: np.ndarray
     y_test_raw: np.ndarray
@@ -36,49 +42,149 @@ class TrainResult:
     target_name: str
     label_encoder: LabelEncoder | None
     X_train: np.ndarray
+    model_kind: ModelKind
+    validation_strategy: str
+    confidence: Literal["high", "medium", "low"]
+    data_warnings: list[str]
+    cv_metrics: dict[str, float]
+    preprocessor: SkPipeline | None  # full pipeline for transform()
+    X_test_df: pd.DataFrame  # raw feature matrix (no target) aligned to X_test rows
+    raw_feature_columns: list[str]
 
 
 MAX_CAT_LEVELS = 25
+RANDOM_STATE = 42
 
 
-def detect_task_type(y: pd.Series) -> TaskType:
-    if y.dtype == object or str(y.dtype) == "bool" or str(y.dtype) == "category":
-        return "classification"
-    nu = y.nunique(dropna=True)
-    if pd.api.types.is_numeric_dtype(y) and nu <= 20:
-        return "classification"
-    return "regression"
-
-
-def _prepare_features(df: pd.DataFrame, target: str) -> tuple[pd.DataFrame, list[str]]:
-    X = df.drop(columns=[target]).copy()
-    feature_parts: list[pd.DataFrame] = []
-    names: list[str] = []
-
+def _build_column_lists(X: pd.DataFrame) -> tuple[list[str], list[str]]:
     num_cols = X.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = [c for c in X.columns if c not in num_cols]
+    return num_cols, cat_cols
 
-    for c in num_cols:
-        s = pd.to_numeric(X[c], errors="coerce")
-        feature_parts.append(s.to_frame(name=c))
-        names.append(c)
 
-    for c in cat_cols:
-        s = X[c].astype(str).replace("nan", np.nan)
-        vc = s.value_counts(dropna=True)
-        top = set(vc.head(MAX_CAT_LEVELS).index.astype(str))
-        s = s.where(s.astype(str).isin(top), other="_OTHER_")
-        dummies = pd.get_dummies(s, prefix=c, dummy_na=False)
-        for col in dummies.columns:
-            feature_parts.append(dummies[[col]])
-            names.append(str(col))
-
-    if not feature_parts:
+def _make_preprocessor(num_cols: list[str], cat_cols: list[str]) -> ColumnTransformer:
+    numeric_pipe = SkPipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+        ]
+    )
+    categorical_pipe = SkPipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            (
+                "onehot",
+                OneHotEncoder(
+                    handle_unknown="ignore",
+                    sparse_output=False,
+                    max_categories=MAX_CAT_LEVELS,
+                ),
+            ),
+        ]
+    )
+    transformers: list[tuple[str, Any, list[str]]] = []
+    if num_cols:
+        transformers.append(("num", numeric_pipe, num_cols))
+    if cat_cols:
+        transformers.append(("cat", categorical_pipe, cat_cols))
+    if not transformers:
         raise ValueError("No feature columns after preprocessing")
+    return ColumnTransformer(transformers=transformers, remainder="drop", verbose_feature_names_out=False)
 
-    X_mat = pd.concat(feature_parts, axis=1)
-    X_mat.columns = names
-    return X_mat, names
+
+def _get_feature_names_out(pre: ColumnTransformer, raw_cols: list[str]) -> list[str]:
+    try:
+        names = pre.get_feature_names_out()
+        return [str(x) for x in names]
+    except Exception:
+        # Fallback for older sklearn
+        return [f"f{i}" for i in range(pre.transform(pd.DataFrame(columns=raw_cols)).shape[1])]
+
+
+def _choose_model_kind(
+    task: TaskType,
+    n_rows: int,
+    n_numeric: int,
+    n_categorical: int,
+) -> ModelKind:
+    """Route to a model family based on dataset shape."""
+    complexity = n_numeric + min(n_categorical * 3, 50)
+    if n_rows < 200:
+        if task == "classification":
+            return "random_forest"
+        return "elastic_net" if n_numeric > n_categorical else "random_forest"
+    if n_rows < 2000 and complexity < 80:
+        if task == "classification":
+            return "xgboost"
+        return "xgboost"
+    if task == "classification":
+        return "xgboost"
+    return "xgboost"
+
+
+def _build_estimator(kind: ModelKind, task: TaskType, n_classes: int) -> Any:
+    common_trees = {
+        "n_estimators": 120,
+        "max_depth": 8,
+        "random_state": RANDOM_STATE,
+        "n_jobs": -1,
+    }
+    if kind == "xgboost":
+        if task == "classification":
+            return XGBClassifier(
+                n_estimators=200,
+                max_depth=6,
+                learning_rate=0.08,
+                subsample=0.9,
+                colsample_bytree=0.9,
+                random_state=RANDOM_STATE,
+                n_jobs=-1,
+                objective="multi:softprob" if n_classes > 2 else "binary:logistic",
+                eval_metric="mlogloss" if n_classes > 2 else "logloss",
+            )
+        return XGBRegressor(
+            n_estimators=200,
+            max_depth=6,
+            learning_rate=0.08,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            random_state=RANDOM_STATE,
+            n_jobs=-1,
+            objective="reg:squarederror",
+        )
+    if kind == "random_forest":
+        if task == "classification":
+            return RandomForestClassifier(**common_trees, class_weight="balanced_subsample")
+        return RandomForestRegressor(**common_trees)
+    if kind == "logistic_regression":
+        return LogisticRegression(
+            max_iter=500,
+            random_state=RANDOM_STATE,
+            class_weight="balanced",
+            n_jobs=-1,
+        )
+    return ElasticNet(random_state=RANDOM_STATE, max_iter=2000)
+
+
+def _confidence_from_metrics(
+    task: TaskType,
+    metrics: dict[str, float],
+    n_rows: int,
+) -> Literal["high", "medium", "low"]:
+    if task == "classification":
+        acc = metrics.get("accuracy", 0)
+        f1 = metrics.get("f1_macro", 0)
+        score = 0.5 * acc + 0.5 * f1
+    else:
+        r2 = metrics.get("r2", -1)
+        score = max(0.0, min(1.0, (r2 + 0.5) / 1.5))  # rough map
+    if n_rows < 50:
+        return "low"
+    if score >= 0.65 and n_rows >= 200:
+        return "high"
+    if score >= 0.45 or n_rows >= 100:
+        return "medium"
+    return "low"
 
 
 def train_model(
@@ -86,124 +192,258 @@ def train_model(
     target: str,
     test_size: float = 0.2,
     max_rows: int | None = None,
-    random_state: int = 42,
+    random_state: int = RANDOM_STATE,
+    data_warnings: list[str] | None = None,
+    force_model_kind: ModelKind | None = None,
+    skip_cv: bool = False,
 ) -> TrainResult:
     if target not in df.columns:
         raise ValueError(f"Target column '{target}' not found")
 
+    warnings = list(data_warnings or [])
     work = df.dropna(subset=[target]).copy()
     if max_rows is not None and len(work) > max_rows:
         work = work.sample(n=max_rows, random_state=random_state)
 
-    y_probe = work[target]
-    task = detect_task_type(y_probe)
+    y_raw = work[target]
+    task = detect_task_type(y_raw)
 
     if task == "regression":
         y_num = pd.to_numeric(work[target], errors="coerce")
         work = work.loc[y_num.notna()].reset_index(drop=True)
+        y_raw = work[target]
 
     if len(work) < 10:
         raise ValueError("Not enough rows after cleaning (need at least 10)")
 
-    y_raw = work[target]
-    task = detect_task_type(y_raw)
+    X_df = work.drop(columns=[target])
+    num_cols, cat_cols = _build_column_lists(X_df)
+    if not num_cols and not cat_cols:
+        raise ValueError("No feature columns")
 
-    X_df, feature_names = _prepare_features(work, target)
+    pre = _make_preprocessor(num_cols, cat_cols)
+    kind = force_model_kind or _choose_model_kind(task, len(work), len(num_cols), len(cat_cols))
 
     if task == "classification":
-        n_unique = int(y_raw.astype(str).nunique())
-        # Refuse ID-like / ultra-high-cardinality targets: they're not a
-        # learnable classification signal (e.g. user_id, merchant, email).
-        if n_unique > 50 or n_unique > 0.5 * len(work):
-            raise ValueError(
-                f"Target '{target}' has {n_unique} unique values over "
-                f"{len(work)} rows. This looks like an identifier column, "
-                "not a classification target. Pick a column with a small "
-                "number of categories (e.g. status, label, churned) or a "
-                "numeric metric."
-            )
         le = LabelEncoder()
         y = le.fit_transform(y_raw.astype(str))
-        unique, counts = np.unique(y, return_counts=True)
-        # Stratification requires every class to have >= 2 samples. If any
-        # class is singleton (common for high-cardinality / ID-like targets),
-        # fall back to a plain random split instead of erroring out.
-        if len(unique) > 1 and counts.min() >= 2:
-            stratify = y
-        else:
-            stratify = None
+        n_classes = len(np.unique(y))
+        if n_classes < 2:
+            raise ValueError("Target needs at least 2 classes")
+        est = _build_estimator(kind, task, n_classes)
     else:
         le = None
         y = pd.to_numeric(y_raw, errors="coerce").values.astype(float)
+        n_classes = 0
+        est = _build_estimator(kind, task, 2)
+
+    full_pipe = SkPipeline([("prep", pre), ("model", est)])
+
+    # Stratify only when possible
+    if task == "classification":
+        unique, counts = np.unique(y, return_counts=True)
+        stratify = y if len(unique) > 1 and counts.min() >= 2 else None
+    else:
         stratify = None
 
-    imputer = SimpleImputer(strategy="median")
-    X_imp = imputer.fit_transform(X_df)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_imp,
+    X_train_df, X_test_df, y_train, y_test = train_test_split(
+        X_df,
         y,
         test_size=test_size,
         random_state=random_state,
         stratify=stratify,
     )
 
-    common_params: dict[str, Any] = {
-        "n_estimators": 120,
-        "max_depth": 6,
-        "learning_rate": 0.08,
-        "subsample": 0.9,
-        "colsample_bytree": 0.9,
-        "random_state": random_state,
-        "n_jobs": -1,
-    }
+    # Cross-validation on training fold
+    cv_metrics: dict[str, float] = {}
+    validation_strategy = "holdout"
+    n_splits = min(5, max(2, len(y_train) // 10))
+    if skip_cv:
+        validation_strategy = "holdout_cv_skipped"
+    elif len(y_train) >= 30 and n_splits >= 2:
+        validation_strategy = f"{n_splits}-fold_cv_train"
+        if task == "classification":
+            cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+            try:
+                scores = cross_val_score(
+                    full_pipe,
+                    X_train_df,
+                    y_train,
+                    cv=cv,
+                    scoring="accuracy",
+                    n_jobs=-1,
+                )
+                cv_metrics["cv_accuracy_mean"] = float(np.mean(scores))
+                cv_metrics["cv_accuracy_std"] = float(np.std(scores))
+            except Exception:
+                validation_strategy = "holdout_cv_failed"
+        else:
+            cv = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+            try:
+                scores = cross_val_score(
+                    full_pipe,
+                    X_train_df,
+                    y_train,
+                    cv=cv,
+                    scoring="r2",
+                    n_jobs=-1,
+                )
+                cv_metrics["cv_r2_mean"] = float(np.mean(scores))
+                cv_metrics["cv_r2_std"] = float(np.std(scores))
+            except Exception:
+                validation_strategy = "holdout_cv_failed"
+
+    full_pipe.fit(X_train_df, y_train)
+
+    X_train_t = full_pipe.named_steps["prep"].transform(X_train_df)
+    X_test_t = full_pipe.named_steps["prep"].transform(X_test_df)
+    feat_names = _get_feature_names_out(full_pipe.named_steps["prep"], list(X_df.columns))
+
+    y_pred = full_pipe.named_steps["model"].predict(X_test_t)
 
     if task == "classification":
-        n_classes = len(np.unique(y_train))
-        model = XGBClassifier(
-            **common_params,
-            objective="multi:softprob" if n_classes > 2 else "binary:logistic",
-            eval_metric="mlogloss" if n_classes > 2 else "logloss",
-        )
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
         metrics: dict[str, float] = {
             "accuracy": float(accuracy_score(y_test, y_pred)),
             "f1_macro": float(f1_score(y_test, y_pred, average="macro", zero_division=0)),
         }
-        if n_classes == 2:
+        n_classes_t = len(np.unique(y_train))
+        if n_classes_t == 2:
             try:
-                proba = model.predict_proba(X_test)[:, 1]
+                proba = full_pipe.named_steps["model"].predict_proba(X_test_t)[:, 1]
                 metrics["roc_auc"] = float(roc_auc_score(y_test, proba))
             except Exception:
                 metrics["roc_auc"] = 0.0
+        metrics.update(cv_metrics)
     else:
-        model = XGBRegressor(**common_params, objective="reg:squarederror")
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
         mse = mean_squared_error(y_test, y_pred)
         metrics = {
             "r2": float(r2_score(y_test, y_pred)),
             "mae": float(mean_absolute_error(y_test, y_pred)),
             "rmse": float(np.sqrt(mse)),
         }
+        metrics.update(cv_metrics)
 
-    y_test_raw_vals = (
-        le.inverse_transform(y_test) if le is not None else y_test.astype(float)
-    )
+    confidence = _confidence_from_metrics(task, metrics, len(work))
+    if len(work) < 50:
+        warnings.append(f"Training on {len(work)} rows; interpret drivers cautiously.")
+
+    y_test_raw_vals = le.inverse_transform(y_test) if le is not None else y_test.astype(float)
 
     return TrainResult(
         task_type=task,
         metrics=metrics,
-        model=model,
-        X_test=X_test,
+        model=full_pipe,
+        X_test=X_test_t,
         y_test=y_test,
         y_test_raw=np.asarray(y_test_raw_vals),
-        feature_names=feature_names,
+        feature_names=feat_names,
         target_name=target,
         label_encoder=le,
-        X_train=X_train,
+        X_train=X_train_t,
+        model_kind=kind,
+        validation_strategy=validation_strategy,
+        confidence=confidence,
+        data_warnings=warnings,
+        cv_metrics=cv_metrics,
+        preprocessor=full_pipe,
+        X_test_df=X_test_df.reset_index(drop=True),
+        raw_feature_columns=list(X_df.columns),
     )
 
 
 def metrics_to_json(metrics: dict[str, float]) -> str:
     return json.dumps(metrics)
+
+
+def train_model_with_fallback(
+    df: pd.DataFrame,
+    target: str,
+    test_size: float = 0.2,
+    max_rows: int | None = None,
+    random_state: int = RANDOM_STATE,
+    data_warnings: list[str] | None = None,
+) -> tuple[TrainResult, list[str]]:
+    """
+    Train with automatic fallbacks (primary → random forest → linear/elastic, then CV skip).
+    Returns (result, human-readable fallback notes for the report).
+    """
+    import logging
+
+    from app.ml import messages as user_msg
+
+    logger = logging.getLogger(__name__)
+    notes: list[str] = []
+    w = list(data_warnings or [])
+
+    try:
+        return (
+            train_model(
+                df,
+                target,
+                test_size=test_size,
+                max_rows=max_rows,
+                random_state=random_state,
+                data_warnings=w,
+            ),
+            notes,
+        )
+    except Exception as e:
+        logger.warning("Primary training failed: %s", e, exc_info=True)
+        notes.append(user_msg.GOODWILL_TRAINING_FALLBACK)
+
+    try:
+        return (
+            train_model(
+                df,
+                target,
+                test_size=test_size,
+                max_rows=max_rows,
+                random_state=random_state,
+                data_warnings=w,
+                force_model_kind="random_forest",
+            ),
+            notes,
+        )
+    except Exception as e:
+        logger.warning("Random forest fallback failed: %s", e, exc_info=True)
+
+    y_probe = df.dropna(subset=[target])[target]
+    task = detect_task_type(y_probe)
+    linear_kind: ModelKind = "logistic_regression" if task == "classification" else "elastic_net"
+    try:
+        return (
+            train_model(
+                df,
+                target,
+                test_size=test_size,
+                max_rows=max_rows,
+                random_state=random_state,
+                data_warnings=w,
+                force_model_kind=linear_kind,
+                skip_cv=True,
+            ),
+            notes,
+        )
+    except Exception as e:
+        logger.warning("Linear/elastic fallback failed: %s", e, exc_info=True)
+
+    try:
+        return (
+            train_model(
+                df,
+                target,
+                test_size=max(test_size, 0.25),
+                max_rows=max_rows,
+                random_state=random_state,
+                data_warnings=w,
+                force_model_kind="random_forest",
+                skip_cv=True,
+            ),
+            notes + ["Used a minimal training path (hold-out only, no CV) after earlier model errors."],
+        )
+    except Exception as e:
+        logger.exception("All training fallbacks exhausted")
+        raise RuntimeError(
+            "We could not train a model on this data after several attempts. "
+            "Check that features are not all empty or constant, and the target has variation."
+        ) from e

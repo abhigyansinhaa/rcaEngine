@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS analyses (
   insights_json LONGTEXT NULL,
   recommendations_json LONGTEXT NULL,
   shap_json LONGTEXT NULL,
+  report_json LONGTEXT NULL,
   artifacts_path VARCHAR(1024) NULL,
   error LONGTEXT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

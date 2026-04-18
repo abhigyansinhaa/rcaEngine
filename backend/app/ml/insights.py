@@ -1,4 +1,4 @@
-"""Root-cause style insights from SHAP-ranked features."""
+"""Root-cause style insights from SHAP-ranked features with grouping and confidence."""
 
 from __future__ import annotations
 
@@ -8,14 +8,15 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 
-TaskType = Literal["classification", "regression"]
+from app.ml.common import TaskType
+
+ConfidenceLevel = Literal["high", "medium", "low"]
 
 
 def _base_column_name(feature: str) -> str:
-    """Map one-hot column like 'city_NYC' or 'city_x0' back to prefix before first underscore after dummy prefix."""
+    # One-hot column: prefix_rest — map to prefix (first segment)
     if "_" in feature:
-        parts = feature.split("_", 1)
-        return parts[0]
+        return feature.split("_", 1)[0]
     return feature
 
 
@@ -30,7 +31,7 @@ def aggregate_shap_by_column(
     agg_signed: dict[str, float] = defaultdict(float)
     for r in shap_rows:
         name = r["feature"]
-        stem = name.split("_", 1)[0] if "_" in name else name
+        stem = _base_column_name(name)
         agg_abs[stem] += r["mean_abs_shap"]
         agg_signed[stem] += r["mean_signed_shap"]
 
@@ -53,8 +54,10 @@ def build_insights(
     shap_rows: list[dict[str, Any]],
     column_meta: list[dict[str, Any]],
     top_n: int = 8,
+    confidence: ConfidenceLevel = "medium",
+    explanation_stability: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Correlation / SHAP-based insight strings."""
+    """Correlation / SHAP-based insight strings with confidence tagging."""
     meta_by_name = {m["name"]: m for m in column_meta}
     ranked = sorted(shap_rows, key=lambda r: -r["mean_abs_shap"])[:top_n]
     insights: list[dict[str, Any]] = []
@@ -66,9 +69,10 @@ def build_insights(
         direction = r["direction"]
         strength = r["mean_abs_shap"]
 
+        conf_note = "Strong" if confidence == "high" else "Moderate" if confidence == "medium" else "Tentative"
         text = (
-            f"'{fname}' is among the strongest modeled drivers of '{target}' "
-            f"(mean |SHAP| ≈ {strength:.4f}). Higher values tend to {direction} the predicted outcome."
+            f"{conf_note} driver: '{stem}' is among the strongest modeled associations with '{target}' "
+            f"(mean |importance| ≈ {strength:.4f}). Higher encoded values tend to {direction} the predicted outcome."
         )
 
         if stem in df.columns and pd.api.types.is_numeric_dtype(df[stem]):
@@ -82,15 +86,23 @@ def build_insights(
                 pass
 
         if stem in meta_by_name and meta_by_name[stem].get("null_ratio", 0) > 0.3:
-            text += f" Note: '{stem}' has ~{meta_by_name[stem]['null_ratio']*100:.0f}% missing values; improve data quality to tighten this insight."
+            text += (
+                f" Note: '{stem}' has ~{meta_by_name[stem]['null_ratio']*100:.0f}% missing values; "
+                "treat this driver as less reliable until data quality improves."
+            )
+
+        if explanation_stability:
+            text += f" Note: {explanation_stability}"
 
         insights.append(
             {
                 "feature": fname,
+                "grouped_feature": stem,
                 "kind": "driver",
                 "task_type": task_type,
                 "summary": text,
                 "mean_abs_shap": strength,
+                "confidence": confidence,
             }
         )
 

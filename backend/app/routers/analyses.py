@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -6,12 +7,14 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal, get_db
 from app.deps import get_current_user
+from app.config import settings
 from app.jobs import run_analysis
 from app.models import Analysis, Dataset, User
 from app.schemas import AnalysisCreate, AnalysisOut
 from app.storage import remove_artifact_dir
 
 router = APIRouter(tags=["analyses"])
+logger = logging.getLogger(__name__)
 
 
 def _analysis_to_out(a: Analysis) -> dict[str, Any]:
@@ -30,6 +33,7 @@ def _analysis_to_out(a: Analysis) -> dict[str, Any]:
         "feature_importance": None,
         "shap_summary": json.loads(a.shap_json) if a.shap_json else None,
         "shap_summary_image_url": None,
+        "report": json.loads(a.report_json) if getattr(a, "report_json", None) else None,
     }
     if a.shap_json:
         shap = json.loads(a.shap_json)
@@ -80,7 +84,16 @@ def create_analysis(
     db.commit()
     db.refresh(analysis)
 
-    background_tasks.add_task(_job_wrapper, analysis.id, body.test_size, body.max_rows)
+    if settings.redis_url:
+        try:
+            from app.queue import enqueue_analysis
+
+            enqueue_analysis(analysis.id, body.test_size, body.max_rows)
+        except Exception:
+            logger.exception("RQ enqueue failed; falling back to BackgroundTasks")
+            background_tasks.add_task(_job_wrapper, analysis.id, body.test_size, body.max_rows)
+    else:
+        background_tasks.add_task(_job_wrapper, analysis.id, body.test_size, body.max_rows)
     return AnalysisOut.model_validate(_analysis_to_out(analysis))
 
 

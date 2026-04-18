@@ -1,8 +1,47 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { isAxiosError } from 'axios'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Analysis, Dataset } from '../types'
+import { Button, Card, LoadingState } from '../components/ui'
+import type { Analysis, ColumnSchema, Dataset } from '../types'
+
+/** Same fallback as the target dropdown: first column with a non-empty name, then first column. */
+function fallbackColumnName(columns: ColumnSchema[]): string {
+  const named = columns.find((c) => c.name?.trim())?.name
+  return named ?? columns[0]?.name ?? ''
+}
+
+/** Prefer obvious label columns so churn-style CSVs default to the outcome, not `customer_id`. */
+function pickDefaultTarget(columns: ColumnSchema[]): string {
+  if (!columns.length) return ''
+  const names = columns.map((c) => c.name)
+  const preferred = ['churned', 'churn', 'target', 'label', 'outcome', 'y']
+  for (const p of preferred) {
+    const hit = names.find((n) => n.toLowerCase() === p)
+    if (hit) return hit
+  }
+  const fb = fallbackColumnName(columns)
+  if (fb.toLowerCase() === 'customer_id' || fb.toLowerCase().endsWith('_id')) {
+    const last = names[names.length - 1]
+    if (last && last !== fb) return last
+  }
+  return fb
+}
+
+function formatStartError(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message
+  if (isAxiosError(err)) {
+    const d = err.response?.data as { detail?: string | { msg: string }[] } | undefined
+    if (typeof d?.detail === 'string') return d.detail
+    if (Array.isArray(d?.detail)) return d.detail.map((x) => x.msg).join('; ')
+    if (err.response?.status === 401) return 'Not authenticated. Log in and try again.'
+    if (err.response?.status === 503 || err.response?.status === 500) {
+      return 'Server error while starting analysis. If you use Docker, ensure Redis and DB migrations are applied.'
+    }
+  }
+  return 'Could not start analysis. Check the target column or try again.'
+}
 
 function inferTaskHint(col: { dtype: string; n_unique: number }) {
   if (col.dtype === 'object' || col.dtype === 'bool' || col.dtype === 'category') return 'classification'
@@ -10,13 +49,10 @@ function inferTaskHint(col: { dtype: string; n_unique: number }) {
   return 'regression'
 }
 
-export function DatasetDetail() {
-  const { id } = useParams<{ id: string }>()
-  const datasetId = Number(id)
+function DatasetDetailInner({ datasetId }: { datasetId: number }) {
   const navigate = useNavigate()
   const qc = useQueryClient()
-
-  const [target, setTarget] = useState<string>('')
+  const [target, setTarget] = useState('')
 
   const { data: ds, isLoading } = useQuery({
     queryKey: ['dataset', datasetId],
@@ -38,17 +74,13 @@ export function DatasetDetail() {
     enabled: Number.isFinite(datasetId),
   })
 
-  useEffect(() => {
-    if (ds?.columns?.length && !target) {
-      const first = ds.columns.find((c) => c.name) ?? ds.columns[0]
-      if (first) setTarget(first.name)
-    }
-  }, [ds, target])
-
   const runMutation = useMutation({
     mutationFn: async () => {
+      if (!ds?.columns?.length) throw new Error('Dataset not loaded')
+      const resolved = (target.trim() || pickDefaultTarget(ds.columns)).trim()
+      if (!resolved) throw new Error('No target column')
       const { data } = await api.post<Analysis>(`/datasets/${datasetId}/analyses`, {
-        target,
+        target: resolved,
         test_size: 0.2,
       })
       return data
@@ -65,111 +97,129 @@ export function DatasetDetail() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['datasets'] })
-      navigate('/')
+      navigate('/datasets')
     },
   })
 
-  if (!Number.isFinite(datasetId)) {
-    return <p className="text-red-600">Invalid dataset id.</p>
-  }
+  const defaultTarget = useMemo(
+    () => (ds?.columns?.length ? pickDefaultTarget(ds.columns) : ''),
+    [ds],
+  )
 
   if (isLoading || !ds) {
-    return <p className="text-slate-500">Loading…</p>
+    return <LoadingState rows={2} message="Loading dataset…" />
   }
 
-  const hint = ds.columns.find((c) => c.name === target)
+  const effectiveTarget = target.trim() || defaultTarget
+  const hint = ds.columns.find((c) => c.name === effectiveTarget)
   const taskHint = hint ? inferTaskHint(hint) : ''
 
   return (
-    <div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="space-y-10">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <Link className="text-sm text-emerald-700 hover:underline dark:text-emerald-400" to="/">
-            ← Back
+          <Link
+            className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+            to="/datasets"
+          >
+            ← Datasets
           </Link>
-          <h1 className="mt-2 text-2xl font-bold">{ds.name}</h1>
-          <p className="text-slate-600 dark:text-slate-400">
-            {ds.rows.toLocaleString()} rows · {ds.cols} columns
+          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{ds.name}</h1>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            {ds.rows.toLocaleString()} rows · {ds.cols} columns · {ds.file_format.toUpperCase()}
           </p>
         </div>
-        <button
+        <Button
+          variant="danger"
+          size="sm"
           type="button"
-          className="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/40"
           onClick={() => {
             if (confirm('Delete this dataset and all analyses?')) delMutation.mutate()
           }}
         >
           Delete
-        </button>
+        </Button>
       </div>
 
-      <section className="mt-10">
-        <h2 className="text-lg font-semibold">Schema</h2>
-        <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-100 dark:bg-slate-900">
-              <tr>
-                <th className="px-3 py-2">Column</th>
-                <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Null %</th>
-                <th className="px-3 py-2">Unique</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ds.columns.map((c) => (
-                <tr key={c.name} className="border-t border-slate-200 dark:border-slate-800">
-                  <td className="px-3 py-2 font-mono">{c.name}</td>
-                  <td className="px-3 py-2">{c.dtype}</td>
-                  <td className="px-3 py-2">{(c.null_ratio * 100).toFixed(1)}%</td>
-                  <td className="px-3 py-2">{c.n_unique}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {preview && preview.rows.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold">Preview</h2>
-          <div className="mt-2 max-h-80 overflow-auto rounded-xl border border-slate-200 dark:border-slate-800">
-            <table className="min-w-full text-left text-xs">
-              <thead className="sticky top-0 bg-slate-100 dark:bg-slate-900">
+      <section>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Schema</h2>
+        <Card padding="none" className="mt-3 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
                 <tr>
-                  {preview.columns.map((col) => (
-                    <th key={col} className="whitespace-nowrap px-2 py-2">
-                      {col}
-                    </th>
-                  ))}
+                  <th className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300">Column</th>
+                  <th className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300">Type</th>
+                  <th className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300">Null %</th>
+                  <th className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300">Unique</th>
                 </tr>
               </thead>
               <tbody>
-                {preview.rows.map((row, i) => (
-                  <tr key={i} className="border-t border-slate-200 dark:border-slate-800">
-                    {preview.columns.map((col) => (
-                      <td key={col} className="max-w-xs truncate px-2 py-1">
-                        {row[col] ?? ''}
-                      </td>
-                    ))}
+                {ds.columns.map((c) => (
+                  <tr
+                    key={c.name}
+                    className="border-t border-slate-100 dark:border-slate-800/80"
+                  >
+                    <td className="px-4 py-2.5 font-mono text-xs text-slate-900 dark:text-slate-100">{c.name}</td>
+                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">{c.dtype}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-slate-600 dark:text-slate-400">
+                      {(c.null_ratio * 100).toFixed(1)}%
+                    </td>
+                    <td className="px-4 py-2.5 tabular-nums text-slate-600 dark:text-slate-400">{c.n_unique}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </Card>
+      </section>
+
+      {preview && preview.rows.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Preview</h2>
+          <Card padding="none" className="mt-3">
+            <div className="max-h-80 overflow-auto">
+              <table className="min-w-full text-left text-xs">
+                <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/80">
+                  <tr>
+                    {preview.columns.map((col) => (
+                      <th key={col} className="whitespace-nowrap px-3 py-2 font-semibold text-slate-700 dark:text-slate-300">
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.rows.map((row, i) => (
+                    <tr key={i} className="border-t border-slate-100 dark:border-slate-800/80">
+                      {preview.columns.map((col) => (
+                        <td key={col} className="max-w-xs truncate px-3 py-1.5 text-slate-600 dark:text-slate-400">
+                          {row[col] ?? ''}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </section>
       )}
 
-      <section className="mt-10 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-        <h2 className="text-lg font-semibold">Run analysis</h2>
+      <Card padding="lg" elevated>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Run analysis</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Select the target variable. We auto-detect classification vs regression from the column.
+          Select the target variable. We infer classification vs regression from the column.
         </p>
-        <div className="mt-4 flex flex-wrap items-end gap-4">
+        <div className="mt-6 flex flex-wrap items-end gap-4">
           <div>
-            <label className="block text-sm font-medium">Target column</label>
+            <label htmlFor="target-col" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+              Target column
+            </label>
             <select
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-950"
-              value={target}
+              id="target-col"
+              className="mt-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              value={effectiveTarget}
               onChange={(e) => setTarget(e.target.value)}
             >
               {ds.columns.map((c) => (
@@ -180,23 +230,43 @@ export function DatasetDetail() {
             </select>
           </div>
           {taskHint && (
-            <span className="rounded-full bg-slate-200 px-3 py-1 text-xs dark:bg-slate-800">
+            <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
               Inferred: {taskHint}
             </span>
           )}
         </div>
         {runMutation.isError && (
-          <p className="mt-2 text-sm text-red-600">Could not start analysis. Check the target column.</p>
+          <p className="mt-4 text-sm text-red-600 dark:text-red-400" role="alert">
+            {formatStartError(runMutation.error)}
+          </p>
         )}
-        <button
+        <Button
           type="button"
-          disabled={runMutation.isPending || !target}
+          className="mt-6"
+          disabled={runMutation.isPending || !effectiveTarget}
           onClick={() => runMutation.mutate()}
-          className="mt-6 rounded-lg bg-emerald-600 px-5 py-2.5 font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
         >
           {runMutation.isPending ? 'Starting…' : 'Run root-cause analysis'}
-        </button>
-      </section>
+        </Button>
+      </Card>
     </div>
   )
+}
+
+export function DatasetDetail() {
+  const { id } = useParams<{ id: string }>()
+  const datasetId = Number(id)
+
+  if (!Number.isFinite(datasetId)) {
+    return (
+      <Card padding="lg" className="border-red-200 dark:border-red-900/50">
+        <p className="text-sm font-medium text-red-800 dark:text-red-300">Invalid dataset id.</p>
+        <Button variant="secondary" className="mt-4" to="/datasets">
+          Back to datasets
+        </Button>
+      </Card>
+    )
+  }
+
+  return <DatasetDetailInner key={id} datasetId={datasetId} />
 }
