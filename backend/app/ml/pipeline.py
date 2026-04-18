@@ -111,9 +111,27 @@ def train_model(
     X_df, feature_names = _prepare_features(work, target)
 
     if task == "classification":
+        n_unique = int(y_raw.astype(str).nunique())
+        # Refuse ID-like / ultra-high-cardinality targets: they're not a
+        # learnable classification signal (e.g. user_id, merchant, email).
+        if n_unique > 50 or n_unique > 0.5 * len(work):
+            raise ValueError(
+                f"Target '{target}' has {n_unique} unique values over "
+                f"{len(work)} rows. This looks like an identifier column, "
+                "not a classification target. Pick a column with a small "
+                "number of categories (e.g. status, label, churned) or a "
+                "numeric metric."
+            )
         le = LabelEncoder()
         y = le.fit_transform(y_raw.astype(str))
-        stratify = y if len(np.unique(y)) > 1 else None
+        unique, counts = np.unique(y, return_counts=True)
+        # Stratification requires every class to have >= 2 samples. If any
+        # class is singleton (common for high-cardinality / ID-like targets),
+        # fall back to a plain random split instead of erroring out.
+        if len(unique) > 1 and counts.min() >= 2:
+            stratify = y
+        else:
+            stratify = None
     else:
         le = None
         y = pd.to_numeric(y_raw, errors="coerce").values.astype(float)

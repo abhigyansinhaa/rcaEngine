@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { AxiosError } from 'axios'
 import { useAuth } from '../auth/AuthContext'
 
 export function Register() {
@@ -22,8 +23,19 @@ export function Register() {
     try {
       await register(email, password)
       navigate('/', { replace: true })
-    } catch {
-      setErr('Could not register. Email may already be in use.')
+    } catch (error) {
+      if (error instanceof AxiosError) {
+        const detail = error.response?.data?.detail
+        if (typeof detail === 'string' && detail.length > 0) {
+          setErr(detail)
+        } else if (!error.response) {
+          setErr('Cannot reach backend. Make sure the API server is running.')
+        } else {
+          setErr('Could not register. Please try again.')
+        }
+      } else {
+        setErr('Could not register. Please try again.')
+      }
     } finally {
       setBusy(false)
     }

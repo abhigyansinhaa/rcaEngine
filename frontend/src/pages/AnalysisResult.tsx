@@ -130,18 +130,11 @@ export function AnalysisResult() {
               <div key={k} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
                 <dt className="text-xs uppercase tracking-wide text-slate-500">{k}</dt>
                 <dd className="text-xl font-semibold">
-                  {typeof v === 'number' && (k.includes('auc') || k.includes('accuracy') || k.includes('r2'))
-                    ? `${(v * (k.includes('r2') && v <= 1 ? 100 : 1)).toFixed(k.includes('r2') ? 1 : 3)}${k.includes('r2') ? '%' : k.includes('accuracy') || k.includes('auc') ? '' : ''}`
-                    : typeof v === 'number'
-                      ? v.toFixed(4)
-                      : String(v)}
+                  {typeof v === 'number' ? v.toFixed(4) : String(v)}
                 </dd>
               </div>
             ))}
           </dl>
-          <p className="mt-2 text-xs text-slate-500">
-            Accuracy/F1/AUC shown as decimals; R² as percentage of variance explained.
-          </p>
         </section>
       )}
 
@@ -155,7 +148,10 @@ export function AnalysisResult() {
                 <XAxis type="number" />
                 <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
                 <Tooltip
-                  formatter={(value: number) => [value.toFixed(4), '|SHAP|']}
+                  formatter={(value) => [
+                    typeof value === 'number' ? value.toFixed(4) : String(value ?? ''),
+                    '|SHAP|',
+                  ]}
                   labelFormatter={(_, payload) =>
                     payload?.[0]?.payload?.full ? String(payload[0].payload.full) : ''
                   }
@@ -185,7 +181,7 @@ export function AnalysisResult() {
             {data.insights.map((ins, i) => (
               <li key={i} className="text-slate-700 dark:text-slate-300">
                 <span className="font-mono text-sm text-emerald-800 dark:text-emerald-400">{ins.feature}</span>
-                <p className="mt-1 whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: ins.summary.replace(/`([^`]+)`/g, '<code>$1</code>') }} />
+                <p className="mt-1 whitespace-pre-wrap">{ins.summary}</p>
               </li>
             ))}
           </ul>

@@ -28,22 +28,22 @@ todos:
     status: completed
   - id: frontend_scaffold
     content: "Frontend scaffold: Vite + React + TS + Tailwind + Router + Query + axios + AuthContext"
-    status: in_progress
+    status: completed
   - id: frontend_auth
     content: Login/Register pages + protected routes
-    status: pending
+    status: completed
   - id: frontend_datasets
     content: Dashboard, Upload (drag-drop), DatasetDetail (schema, preview, target picker)
-    status: pending
+    status: completed
   - id: frontend_results
     content: "AnalysisResult page: metrics, feature importance chart, SHAP summary, recommendations, JSON download"
-    status: pending
+    status: completed
   - id: docker
     content: Dockerfiles for backend and frontend + docker-compose.yml with data volume
-    status: pending
+    status: completed
   - id: readme
     content: README with setup, run, and usage walkthrough
-    status: pending
+    status: completed
 isProject: false
 ---
 
@@ -59,6 +59,8 @@ flowchart LR
     API --> ML[ML Pipeline: pandas, scikit-learn, XGBoost, SHAP]
     ML --> FS
 ```
+
+
 
 - Backend: FastAPI, SQLAlchemy 2.0, SQLite, JWT auth (python-jose + passlib/bcrypt), pandas, scikit-learn, xgboost, shap, pyarrow.
 - Jobs: FastAPI `BackgroundTasks` (in-process) for local MVP; interface kept thin so it can later swap to Celery/RQ.
@@ -123,12 +125,13 @@ rca/
 
 ## Dev + run
 
-- `docker-compose.yml`: `backend` (uvicorn on 8000, mounts `./data`), `frontend` (vite dev on 5173, proxies `/api` to backend). Root `README.md` documents `docker compose up` and local non-Docker dev.
+- `docker-compose.yml`: `backend` (uvicorn on 8000, mounts `./data`), `frontend` (vite dev on 5000, proxies `/api` to backend). Root `README.md` documents `docker compose up` and local non-Docker dev.
 - `backend/requirements.txt` pins: fastapi, uvicorn[standard], sqlalchemy, pydantic, pydantic-settings, python-jose[cryptography], passlib[bcrypt], python-multipart, pandas, numpy, scikit-learn, xgboost, shap, matplotlib, pyarrow.
-- CORS allowed for `http://localhost:5173` in dev.
+- CORS allowed for `http://localhost:5000` in dev.
 
 ## Scalability notes (built-in, not built-now)
 
 - Job runner is isolated behind a `run_analysis(analysis_id)` function -> swap `BackgroundTasks` for Celery/RQ without API changes.
 - File store uses a `Storage` abstraction (local now) -> later swap to S3 by implementing the same interface.
 - SQLite connection is created via SQLAlchemy engine URL from env -> switch to Postgres by changing `DATABASE_URL`.
+

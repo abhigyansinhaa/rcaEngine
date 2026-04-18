@@ -25,7 +25,7 @@ def build_recommendations(
     else:
         r2 = metrics.get("r2", 0)
         recs.append(
-            f"Model explains about {r2:.1%} of variance in `{target}` (R²). Focus on the top drivers below for prioritization."
+            f"Model explains about {r2 * 100:.1f}% of variance in '{target}' (R²). Focus on the top drivers below for prioritization."
         )
 
     ranked = sorted(shap_rows, key=lambda r: -r["mean_abs_shap"])[:top_k]

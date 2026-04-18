@@ -9,8 +9,8 @@ def _default_data_dir() -> Path:
 
 
 def _default_database_url() -> str:
-    p = (_default_data_dir() / "app.db").resolve()
-    return f"sqlite:///{p.as_posix()}"
+    # MySQL default for local docker compose usage.
+    return "mysql+pymysql://rca_user:rca_pass@mysql:3306/rca_db"
 
 
 class Settings(BaseSettings):
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     uploads_dir: Path | None = None
     artifacts_dir: Path | None = None
 
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origins: list[str] = ["http://localhost:5000", "http://127.0.0.1:5000"]
 
     @model_validator(mode="after")
     def set_subdirs(self) -> "Settings":
