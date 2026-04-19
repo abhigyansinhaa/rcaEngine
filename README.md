@@ -5,6 +5,8 @@ Web app for uploading tabular datasets, choosing a target variable, and getting 
 - **Backend:** FastAPI, SQLAlchemy (MySQL), JWT auth, XGBoost, SHAP  
 - **Frontend:** React, Vite, TypeScript, Tailwind CSS, TanStack Query, Recharts  
 
+**Architecture & scalability:** [docs/ARCHITECTURE_AND_SCALABILITY.md](docs/ARCHITECTURE_AND_SCALABILITY.md) — full stack, ML pipeline, and future scaling. **PDF:** [docs/ARCHITECTURE_AND_SCALABILITY.pdf](docs/ARCHITECTURE_AND_SCALABILITY.pdf). Regenerate with `python scripts/generate_architecture_pdf.py` (requires `pip install markdown xhtml2pdf`).
+
 ## Quick start (Docker)
 
 ```bash
