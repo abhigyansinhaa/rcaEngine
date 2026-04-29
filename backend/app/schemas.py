@@ -56,12 +56,14 @@ class AnalysisCreate(BaseModel):
     target: str
     test_size: float = Field(default=0.2, ge=0.05, le=0.5)
     max_rows: int | None = Field(default=None, description="Optional cap on rows used for training")
+    value_column: str | None = Field(default=None, description="Optional numeric column for revenue / value KPIs")
 
 
 class AnalysisOut(BaseModel):
     id: int
     dataset_id: int
     target: str
+    value_column: str | None = None
     task_type: str | None
     status: str
     metrics: dict[str, Any] | None = None
@@ -74,6 +76,21 @@ class AnalysisOut(BaseModel):
     error: str | None = None
     created_at: datetime
     completed_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class AnalysisListItem(BaseModel):
+    id: int
+    dataset_id: int
+    dataset_name: str
+    target: str
+    task_type: str | None = None
+    status: str
+    value_column: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+    kpi_summary: dict[str, Any] | None = None
 
     model_config = {"from_attributes": True}
 

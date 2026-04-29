@@ -41,6 +41,7 @@ class Analysis(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"), nullable=False, index=True)
     target: Mapped[str] = mapped_column(String(512), nullable=False)
+    value_column: Mapped[str | None] = mapped_column(String(512), nullable=True)
     task_type: Mapped[str | None] = mapped_column(String(32), nullable=True)  # classification | regression
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
     metrics_json: Mapped[str | None] = mapped_column(Text, nullable=True)

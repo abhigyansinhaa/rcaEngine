@@ -15,10 +15,10 @@ export function ErrorState({
   retryLabel = 'Try again',
 }: Props) {
   return (
-    <Card padding="lg" className="border-red-200/80 dark:border-red-900/50">
+    <Card padding="lg" tone="risk">
       <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="font-semibold text-red-800 dark:text-red-300">{title}</h2>
+          <h2 className="font-bold text-red-900 dark:text-red-200">{title}</h2>
           <p className="mt-1 text-sm text-red-700/90 dark:text-red-400/90">{message}</p>
         </div>
         {onRetry && (

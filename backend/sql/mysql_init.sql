@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS analyses (
   id INT AUTO_INCREMENT PRIMARY KEY,
   dataset_id INT NOT NULL,
   target VARCHAR(512) NOT NULL,
+  value_column VARCHAR(512) NULL,
   task_type VARCHAR(32) NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'queued',
   metrics_json LONGTEXT NULL,

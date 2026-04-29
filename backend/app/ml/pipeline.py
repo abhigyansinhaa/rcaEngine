@@ -56,6 +56,30 @@ MAX_CAT_LEVELS = 25
 RANDOM_STATE = 42
 
 
+def training_work_frame(
+    df: pd.DataFrame,
+    target: str,
+    max_rows: int | None = None,
+    random_state: int = RANDOM_STATE,
+) -> tuple[pd.DataFrame, TaskType]:
+    """
+    Same row subset as train_model: dropna(target), optional sample, regression numeric clean.
+    """
+    if target not in df.columns:
+        raise ValueError(f"Target column '{target}' not found")
+    work = df.dropna(subset=[target]).copy()
+    if max_rows is not None and len(work) > max_rows:
+        work = work.sample(n=max_rows, random_state=random_state)
+
+    y_raw = work[target]
+    task = detect_task_type(y_raw)
+    if task == "regression":
+        y_num = pd.to_numeric(work[target], errors="coerce")
+        work = work.loc[y_num.notna()].reset_index(drop=True)
+
+    return work, task
+
+
 def _build_column_lists(X: pd.DataFrame) -> tuple[list[str], list[str]]:
     num_cols = X.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = [c for c in X.columns if c not in num_cols]
@@ -201,20 +225,12 @@ def train_model(
         raise ValueError(f"Target column '{target}' not found")
 
     warnings = list(data_warnings or [])
-    work = df.dropna(subset=[target]).copy()
-    if max_rows is not None and len(work) > max_rows:
-        work = work.sample(n=max_rows, random_state=random_state)
-
-    y_raw = work[target]
-    task = detect_task_type(y_raw)
-
-    if task == "regression":
-        y_num = pd.to_numeric(work[target], errors="coerce")
-        work = work.loc[y_num.notna()].reset_index(drop=True)
-        y_raw = work[target]
+    work, task = training_work_frame(df, target, max_rows, random_state)
 
     if len(work) < 10:
         raise ValueError("Not enough rows after cleaning (need at least 10)")
+
+    y_raw = work[target]
 
     X_df = work.drop(columns=[target])
     num_cols, cat_cols = _build_column_lists(X_df)

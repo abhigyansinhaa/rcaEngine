@@ -12,15 +12,15 @@ export function PageHeader({ title, description, actions, eyebrow }: Props) {
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
         {eyebrow && (
-          <p className="text-xs font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-700 dark:text-brand-300">
             {eyebrow}
           </p>
         )}
-        <h1 className={`text-2xl font-bold tracking-tight text-slate-900 dark:text-white ${eyebrow ? 'mt-1' : ''}`}>
+        <h1 className={`text-3xl font-black tracking-tight text-slate-950 sm:text-4xl dark:text-white ${eyebrow ? 'mt-2' : ''}`}>
           {title}
         </h1>
         {description != null && description !== '' && (
-          <div className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+          <div className="mt-3 max-w-3xl text-sm leading-7 text-slate-600 dark:text-slate-300">
             {description}
           </div>
         )}

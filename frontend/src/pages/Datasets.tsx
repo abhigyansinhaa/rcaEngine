@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import { Button, Card, EmptyState, ErrorState, Input, LoadingState, PageHeader } from '../components/ui'
+import { Button, Card, EmptyState, ErrorState, Input, LoadingState, PageHeader, StatusBadge } from '../components/ui'
 import type { Dataset } from '../types'
 
 function formatDate(iso: string) {
@@ -56,8 +56,8 @@ export function Datasets() {
     <div className="space-y-8">
       <PageHeader
         eyebrow="Data"
-        title="Datasets"
-        description="All uploaded tables. Open one to preview schema, pick a target, and run root-cause analysis."
+        title="Dataset inventory"
+        description="Find uploaded tables, check freshness, and open a dataset to configure the next root-cause run."
         actions={<Button to="/upload">Upload dataset</Button>}
       />
 
@@ -87,7 +87,8 @@ export function Datasets() {
 
       {data && data.length > 0 && (
         <>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <Card padding="md" tone="strong">
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
             <div className="max-w-md flex-1">
               <Input
                 label="Search"
@@ -98,44 +99,44 @@ export function Datasets() {
               />
             </div>
             <div>
-              <label htmlFor="sort-datasets" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+              <label htmlFor="sort-datasets" className="block text-sm font-bold text-slate-700 dark:text-slate-200">
                 Sort by
               </label>
               <select
                 id="sort-datasets"
                 value={sort}
                 onChange={(e) => setSort(e.target.value as typeof sort)}
-                className="mt-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                className="mt-1.5 rounded-2xl border border-white/70 bg-white/85 px-4 py-3 text-sm text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
               >
                 <option value="recent">Recently added</option>
                 <option value="name">Name (A–Z)</option>
                 <option value="rows">Row count</option>
               </select>
             </div>
-          </div>
+            </div>
+          </Card>
 
           {filtered.length === 0 ? (
             <Card padding="lg" className="text-center text-sm text-slate-600 dark:text-slate-400">
               No datasets match “{query}”. Try a different search.
             </Card>
           ) : (
-            <ul className="grid gap-4 sm:grid-cols-2">
+            <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {filtered.map((d) => (
                 <li key={d.id}>
                   <Link to={`/datasets/${d.id}`} className="block h-full">
                     <Card
                       padding="md"
                       elevated
-                      className="h-full transition-colors hover:border-brand-300/80 dark:hover:border-brand-700/50"
+                      tone="strong"
+                      className="h-full transition hover:-translate-y-0.5 hover:border-brand-300/80 dark:hover:border-brand-700/50"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <h2 className="font-semibold text-slate-900 dark:text-white">{d.name}</h2>
-                        <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                          {d.file_format}
-                        </span>
+                        <h2 className="font-black tracking-tight text-slate-950 dark:text-white">{d.name}</h2>
+                        <StatusBadge>{d.file_format}</StatusBadge>
                       </div>
                       <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                        {d.rows.toLocaleString()} rows · {d.cols} columns
+                        {d.rows.toLocaleString()} rows - {d.cols} columns
                       </p>
                       <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-500" title={d.filename}>
                         {d.filename}

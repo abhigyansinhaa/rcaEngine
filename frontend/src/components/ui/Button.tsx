@@ -3,12 +3,12 @@ import { Link } from 'react-router-dom'
 
 const variants = {
   primary:
-    'bg-brand-600 text-white shadow-sm hover:bg-brand-700 dark:shadow-none dark:hover:bg-brand-600',
+    'bg-brand-500 text-white shadow-lg shadow-brand-700/20 hover:bg-brand-400 dark:shadow-brand-950/30 dark:hover:bg-brand-400',
   secondary:
-    'border border-slate-200 bg-white text-slate-800 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800',
+    'border border-white/70 bg-white/80 text-slate-800 shadow-sm hover:bg-white dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100 dark:hover:bg-slate-800',
   danger:
-    'border border-red-200 bg-white text-red-700 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-950/50',
-  ghost: 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800',
+    'border border-red-200 bg-red-50/80 text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/60',
+  ghost: 'text-slate-600 hover:bg-white/70 dark:text-slate-400 dark:hover:bg-slate-800/80',
 } as const
 
 const sizes = {
@@ -39,7 +39,7 @@ export function Button({
   ...rest
 }: Props) {
   const base =
-    'inline-flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:pointer-events-none'
+    'inline-flex items-center justify-center gap-2 transition-all disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60'
   const cls = `${base} ${variants[variant]} ${sizes[size]} ${className}`.trim()
 
   if (to) {

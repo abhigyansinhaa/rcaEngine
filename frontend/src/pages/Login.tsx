@@ -29,12 +29,13 @@ export function Login() {
   }
 
   return (
-    <div className="mx-auto max-w-md">
+    <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1fr_420px] lg:items-center">
       <PageHeader
+        eyebrow="RCA Command"
         title="Welcome back"
-        description="Sign in to run analyses and review root-cause insights."
+        description="Sign in to upload datasets, monitor model runs, and review decision-ready root-cause insights."
       />
-      <Card padding="lg" elevated className="mt-8">
+      <Card padding="lg" tone="strong" elevated>
         <form onSubmit={onSubmit} className="space-y-4">
           <Input
             label="Email"
@@ -53,7 +54,7 @@ export function Login() {
             onChange={(e) => setPassword(e.target.value)}
           />
           {err && (
-            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+            <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
               {err}
             </p>
           )}

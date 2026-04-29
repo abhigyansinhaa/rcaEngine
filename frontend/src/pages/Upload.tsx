@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
-import { Card, Input, PageHeader } from '../components/ui'
+import { Card, Input, PageHeader, StatusBadge } from '../components/ui'
 
 export function Upload() {
   const navigate = useNavigate()
@@ -47,14 +47,19 @@ export function Upload() {
   )
 
   return (
-    <div className="mx-auto max-w-lg space-y-8">
+    <div className="mx-auto max-w-3xl space-y-8">
       <PageHeader
-        eyebrow="Ingest"
+        eyebrow="Step 1 - Ingest"
         title="Upload dataset"
-        description="CSV or Parquet. We’ll profile columns and let you pick a target for RCA."
+        description="Start the RCA flow with a CSV or Parquet file. After upload, we will profile columns and guide target selection."
       />
 
-      <Card padding="lg" elevated>
+      <Card padding="lg" tone="strong" elevated>
+        <div className="mb-6 flex flex-wrap gap-2">
+          <StatusBadge tone="info">CSV</StatusBadge>
+          <StatusBadge tone="info">Parquet</StatusBadge>
+          <StatusBadge tone="success">Schema profiling</StatusBadge>
+        </div>
         <Input
           label="Display name (optional)"
           value={name}
@@ -73,10 +78,10 @@ export function Upload() {
           }}
           onDragLeave={() => setDrag(false)}
           onDrop={onDrop}
-          className={`mt-6 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-14 transition ${
+          className={`mt-6 flex cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed px-6 py-16 transition ${
             drag
-              ? 'border-brand-500 bg-brand-50/80 dark:bg-brand-950/30'
-              : 'border-slate-200 bg-slate-50/50 dark:border-slate-700 dark:bg-slate-900/40'
+              ? 'border-brand-500 bg-brand-50/90 shadow-inner dark:bg-brand-950/40'
+              : 'border-slate-300 bg-white/55 dark:border-slate-700 dark:bg-slate-950/35'
           }`}
           onClick={() => document.getElementById('file-input')?.click()}
         >
@@ -90,7 +95,7 @@ export function Upload() {
               if (f) void uploadFile(f)
             }}
           />
-          <div className="rounded-full bg-brand-100 p-3 text-brand-700 dark:bg-brand-950/60 dark:text-brand-400">
+          <div className="rounded-3xl bg-brand-100 p-4 text-brand-700 ring-1 ring-brand-200 dark:bg-brand-950/60 dark:text-brand-300 dark:ring-brand-900">
             <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
               <path
                 strokeLinecap="round"
@@ -100,10 +105,10 @@ export function Upload() {
               />
             </svg>
           </div>
-          <p className="mt-4 text-center text-sm font-medium text-slate-800 dark:text-slate-200">
+          <p className="mt-5 text-center text-base font-black text-slate-950 dark:text-slate-100">
             {progress ? 'Uploading…' : 'Drop a file here or click to browse'}
           </p>
-          <p className="mt-1 text-center text-xs text-slate-500 dark:text-slate-500">.csv, .parquet</p>
+          <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-500">Accepted formats: .csv, .parquet, .pq</p>
         </div>
 
         {err && (

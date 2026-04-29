@@ -54,9 +54,9 @@ Open http://localhost:5000 — the dev server proxies `/api` and `/artifacts` to
 
 1. **Register** a new account (or log in).  
 2. **Upload** a CSV or Parquet file.  
-3. Open the dataset, **select the target column**, and run **Root-cause analysis**.  
+3. Open the dataset, **select the target column**, optionally pick a **numeric value column** (revenue / LTV / ARPU-style) for KPIs, and run **Root-cause analysis**.  
 4. Wait for status **completed** (the results page polls automatically).  
-5. Review metrics, SHAP / feature importance, narrative insights, recommendations, and download the JSON report.  
+5. Open the **Dashboard** for **business KPIs**: risk concentration (Pareto), counterfactual driver rollups (estimate), segmented exposure, modeled reliability—and commercial overlays when a value column is set. On the dataset page still see SHAP narratives, downloads, recommendations.  
 
 ## API overview
 
@@ -71,8 +71,9 @@ Open http://localhost:5000 — the dev server proxies `/api` and `/artifacts` to
 | GET | `/api/datasets/{id}/preview` | Preview rows |
 | POST | `/api/datasets/{id}/profile` | `{ "target" }` — suitability checks (no training) |
 | DELETE | `/api/datasets/{id}` | Delete dataset + analyses |
-| POST | `/api/datasets/{id}/analyses` | `{ target, test_size?, max_rows? }` |
-| GET | `/api/analyses/{id}` | Analysis status and results |
+| POST | `/api/datasets/{id}/analyses` | `{ target, test_size?, max_rows?, value_column? }` |
+| GET | `/api/analyses` | List analyses (+ compact KPI summary for completed rows) |
+| GET | `/api/analyses/{id}` | Analysis status and results (`report.kpis`) |
 | GET | `/artifacts/{id}/shap_summary.png` | SHAP summary image |
 
 ## Project layout
@@ -89,8 +90,8 @@ backend/sql/          # MySQL schema initialization script
 - **Scaling:** With `REDIS_URL` set (see Docker Compose), analyses run on an **RQ worker**; otherwise they use FastAPI `BackgroundTasks`.  
 - **Models:** Sklearn `Pipeline` (imputation, scaling, one-hot) plus routed models: **XGBoost**, **Random Forest**, or **Elastic Net / Logistic Regression** depending on dataset size and task.  
 - **Profiling:** `POST /api/datasets/{id}/profile` with `{ "target": "column_name" }` returns suitability checks before training.  
-- **Report:** Completed analyses include a structured `report` (dataset health, model choice, CV hints, grouped drivers).  
-- **Database migration:** If you created the DB before `report_json` existed, run [backend/sql/migration_002_add_report_json.sql](backend/sql/migration_002_add_report_json.sql).  
+- **Report:** Completed analyses include a structured `report` (dataset health, model choice, CV hints, grouped drivers). Successful runs add **`report.kpis`**: concentration/Pareto headlines, segment value share with tractability hints, driver counterfactual rollups (SHAP-based scenario), reliability, and optional monetization metrics when `value_column` is set. Scenario numbers are **not** guaranteed business impact.  
+- **Database migration:** If you created the DB before `report_json` existed, run [backend/sql/migration_002_add_report_json.sql](backend/sql/migration_002_add_report_json.sql). If it predates **`value_column`**, run [backend/sql/migration_003_add_value_column.sql](backend/sql/migration_003_add_value_column.sql).  
 - **SHAP:** Tree models use `TreeExplainer`; linear baselines use coefficients and/or permutation importance. Plots are saved under `data/artifacts/{analysis_id}/`.  
 - **Causal language:** Outputs are **associative** (model-based), not proven causal effects.  
 

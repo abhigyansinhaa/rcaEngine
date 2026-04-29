@@ -43,12 +43,13 @@ export function Register() {
   }
 
   return (
-    <div className="mx-auto max-w-md">
+    <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1fr_420px] lg:items-center">
       <PageHeader
+        eyebrow="RCA Command"
         title="Create your account"
-        description="Upload datasets and run interpretable root-cause analysis in one place."
+        description="Create a workspace for uploads, model explainability, KPI rollups, and recommended interventions."
       />
-      <Card padding="lg" elevated className="mt-8">
+      <Card padding="lg" tone="strong" elevated>
         <form onSubmit={onSubmit} className="space-y-4">
           <Input
             label="Email"
@@ -69,7 +70,7 @@ export function Register() {
             onChange={(e) => setPassword(e.target.value)}
           />
           {err && (
-            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+            <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
               {err}
             </p>
           )}

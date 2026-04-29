@@ -17,6 +17,69 @@ export type Dataset = {
   created_at: string
 }
 
+export type DriverImpactRollup = {
+  delta_target_rate: number
+  users_savable: number
+  revenue_recoverable?: number | null
+}
+
+export type AnalysisKpis = {
+  target_level: {
+    n_users: number
+    target_rate?: number
+    predicted_target_rate?: number
+    target_mean?: number
+    predicted_mean?: number
+    high_risk_count: number
+    high_risk_share: number
+  }
+  impact_revenue?: {
+    total_value: number
+    revenue_at_risk: number
+    potential_revenue_saved: number
+    avg_value_high_risk: number
+    currency?: string | null
+  } | null
+  concentration: {
+    lorenz_points: { x: number; y: number }[]
+    headline: { top_pct_users: number; share_of_risk: number }
+    gini: number
+  }
+  risk_segments: {
+    bucket: 'low' | 'medium' | 'high'
+    count: number
+    share: number
+    value?: number | null
+    value_share?: number | null
+    avg_proba?: number
+    avg_top_driver_leverage?: number
+    tractability_score: number
+    easiest_to_fix: boolean
+  }[]
+  drivers: { feature: string; mean_abs_shap: number; share: number }[]
+  top_driver_share: number
+  driver_impact: {
+    approximation: 'shap_zeroing' | 'linear_share'
+    per_driver: {
+      feature: string
+      delta_target_rate: number
+      users_savable: number
+      revenue_recoverable?: number | null
+    }[]
+    top1: DriverImpactRollup
+    top2: DriverImpactRollup
+    top3: DriverImpactRollup
+  }
+  reliability: {
+    score: number
+    tier: 'high' | 'medium' | 'low'
+    headline_metric: string
+    headline_value: number
+    cv_std?: number | null
+    hint: string
+  }
+}
+
 export type AnalysisReport = {
   profile?: {
     dataset_health?: Record<string, unknown>
@@ -35,12 +98,14 @@ export type AnalysisReport = {
   data_warnings?: string[]
   user_message?: string | null
   fallbacks?: string[]
+  kpis?: AnalysisKpis
 }
 
 export type Analysis = {
   id: number
   dataset_id: number
   target: string
+  value_column?: string | null
   task_type: string | null
   status: string
   metrics: Record<string, number> | null
@@ -67,6 +132,23 @@ export type Analysis = {
   error: string | null
   created_at: string
   completed_at: string | null
+}
+
+export type AnalysisListItem = {
+  id: number
+  dataset_id: number
+  dataset_name: string
+  target: string
+  task_type: string | null
+  status: string
+  value_column?: string | null
+  created_at: string
+  completed_at: string | null
+  kpi_summary: {
+    headline?: { top_pct_users: number; share_of_risk: number }
+    top2_impact?: DriverImpactRollup
+    approximation?: string
+  } | null
 }
 
 export type DatasetProfile = {

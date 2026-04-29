@@ -11,8 +11,15 @@ import {
   YAxis,
 } from 'recharts'
 import { api } from '../api/client'
-import { Button, Card, ErrorState, LoadingState, PageHeader } from '../components/ui'
+import { Button, Card, ErrorState, LoadingState, PageHeader, SectionHeader, StatusBadge } from '../components/ui'
 import type { Analysis } from '../types'
+
+function statusTone(status: string): 'default' | 'info' | 'success' | 'warning' | 'risk' {
+  if (status === 'completed') return 'success'
+  if (status === 'failed') return 'risk'
+  if (status === 'queued' || status === 'running') return 'warning'
+  return 'default'
+}
 
 export function AnalysisResult() {
   const { id } = useParams<{ id: string }>()
@@ -91,24 +98,19 @@ export function AnalysisResult() {
         </Link>
         <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <PageHeader
+            eyebrow="Analysis report"
             title={`Analysis #${data.id}`}
             description={
               <>
-                Target: <code className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-sm dark:bg-slate-800">{data.target}</code>
+                Target: <code className="rounded-md bg-white/80 px-1.5 py-0.5 font-mono text-sm dark:bg-slate-800">{data.target}</code>
                 {data.task_type && (
-                  <span className="ml-2 inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                    {data.task_type}
-                  </span>
+                  <span className="ml-2"><StatusBadge tone="info">{data.task_type}</StatusBadge></span>
                 )}
               </>
             }
           />
           <div className="flex flex-wrap gap-2">
-            {running && (
-              <span className="inline-flex items-center rounded-xl bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 dark:bg-amber-950/60 dark:text-amber-200">
-                {data.status}…
-              </span>
-            )}
+            <StatusBadge tone={statusTone(data.status)}>{running ? `${data.status}...` : data.status}</StatusBadge>
             <Button variant="secondary" size="sm" type="button" onClick={downloadJson} disabled={data.status !== 'completed'}>
               Download JSON
             </Button>
@@ -117,7 +119,7 @@ export function AnalysisResult() {
       </div>
 
       {data.error && (
-        <Card padding="md" className="border-amber-200 bg-amber-50/80 dark:border-amber-900/40 dark:bg-amber-950/30">
+        <Card padding="md" tone="warning">
           <p className="text-sm text-amber-950 dark:text-amber-100">{data.error}</p>
         </Card>
       )}
@@ -136,7 +138,7 @@ export function AnalysisResult() {
       )}
 
       {data.status === 'completed' && data.report?.user_message && (
-        <Card padding="md" className="border-brand-200 bg-brand-50/60 dark:border-brand-900/40 dark:bg-brand-950/25">
+        <Card padding="md" tone="info">
           <p className="text-sm font-medium text-brand-950 dark:text-brand-100">{data.report.user_message}</p>
           {data.report.fallbacks && data.report.fallbacks.length > 0 && (
             <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-brand-900/90 dark:text-brand-200/90">
@@ -150,12 +152,12 @@ export function AnalysisResult() {
 
       {data.status === 'completed' && data.metrics && (
         <section>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Metrics</h2>
+          <SectionHeader title="Model metrics" description="Performance signals to decide how much confidence to place in the report." />
           <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {Object.entries(data.metrics).map(([k, v]) => (
-              <Card key={k} padding="md" elevated>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{k}</dt>
-                <dd className="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+              <Card key={k} padding="md" elevated tone="strong">
+                <dt className="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{k}</dt>
+                <dd className="mt-3 text-3xl font-black tabular-nums text-slate-950 dark:text-white">
                   {typeof v === 'number' ? v.toFixed(4) : String(v)}
                 </dd>
               </Card>
@@ -166,8 +168,8 @@ export function AnalysisResult() {
 
       {data.status === 'completed' && chartData.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Feature importance (mean |SHAP|)</h2>
-          <Card padding="md" className="mt-4">
+          <SectionHeader title="Feature importance" description="Mean absolute SHAP values rank the strongest explanatory drivers." />
+          <Card padding="lg" tone="strong" className="mt-4">
             <div className="h-96 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 16 }}>
@@ -188,7 +190,7 @@ export function AnalysisResult() {
                       payload?.[0]?.payload?.full ? String(payload[0].payload.full) : ''
                     }
                   />
-                  <Bar dataKey="importance" fill="var(--chart-primary)" radius={[0, 6, 6, 0]} />
+                  <Bar dataKey="importance" fill="var(--chart-primary)" radius={[0, 8, 8, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -198,12 +200,12 @@ export function AnalysisResult() {
 
       {data.status === 'completed' && data.shap_summary_image_url && (
         <section>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">SHAP summary plot</h2>
-          <Card padding="md" className="mt-4">
+          <SectionHeader title="SHAP summary plot" description="Distribution view for feature impact and direction." />
+          <Card padding="lg" tone="strong" className="mt-4">
             <img
               src={data.shap_summary_image_url}
               alt="SHAP summary"
-              className="max-w-full rounded-xl border border-slate-200 dark:border-slate-800"
+              className="max-w-full rounded-2xl border border-slate-200 dark:border-slate-800"
             />
           </Card>
         </section>
@@ -211,12 +213,12 @@ export function AnalysisResult() {
 
       {data.status === 'completed' && data.insights && data.insights.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Root-cause insights</h2>
+          <SectionHeader title="Root-cause insights" description="Narratives that translate drivers into investigation hypotheses." />
           <ul className="mt-4 space-y-3">
             {data.insights.map((ins, i) => (
               <li key={i}>
-                <Card padding="md">
-                  <span className="font-mono text-sm font-medium text-brand-800 dark:text-brand-400">{ins.feature}</span>
+                <Card padding="md" tone="strong">
+                  <span className="font-mono text-sm font-bold text-brand-800 dark:text-brand-300">{ins.feature}</span>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">
                     {ins.summary}
                   </p>
@@ -229,8 +231,8 @@ export function AnalysisResult() {
 
       {data.status === 'completed' && data.recommendations && data.recommendations.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Recommendations</h2>
-          <Card padding="md" className="mt-4">
+          <SectionHeader title="Recommendations" description="Suggested next actions from the completed RCA run." />
+          <Card padding="lg" tone="info" className="mt-4">
             <ol className="list-decimal space-y-3 pl-5 text-sm text-slate-700 dark:text-slate-300">
               {data.recommendations.map((r, i) => (
                 <li key={i} className="leading-relaxed">

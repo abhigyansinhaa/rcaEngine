@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { isAxiosError } from 'axios'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import { Button, Card, LoadingState } from '../components/ui'
+import { Button, Card, LoadingState, SectionHeader, StatusBadge } from '../components/ui'
 import type { Analysis, ColumnSchema, Dataset } from '../types'
 
 /** Same fallback as the target dropdown: first column with a non-empty name, then first column. */
@@ -49,10 +49,34 @@ function inferTaskHint(col: { dtype: string; n_unique: number }) {
   return 'regression'
 }
 
+function isNumericColumn(c: ColumnSchema) {
+  const dt = String(c.dtype).toLowerCase()
+  return (
+    dt.includes('float') || dt.includes('int') || dt.includes('uint') || dt.includes('decimal') || dt.includes('numeric')
+  )
+}
+
+/** Auto-pick monetization-ish column excluding target. */
+function pickDefaultValueColumn(columns: ColumnSchema[], target: string): string {
+  const candidates = columns.filter((c) => isNumericColumn(c) && c.name !== target)
+  if (!candidates.length) return ''
+
+  const lower = candidates.map((c) => ({ name: c.name, lc: c.name.toLowerCase().replace(/\s+/g, '') }))
+  const preferred = ['monthly_charges', 'monthlycharges', 'arpu', 'revenue', 'mrr', 'value', 'ltv', 'lifetime_value']
+
+  for (const p of preferred) {
+    const hit = lower.find((x) => x.lc.includes(p.replace(/_/g, '')) || x.lc.endsWith(p.replace(/_/g, '')))
+    if (hit) return hit.name
+  }
+
+  return candidates[0]?.name ?? ''
+}
+
 function DatasetDetailInner({ datasetId }: { datasetId: number }) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [target, setTarget] = useState('')
+  const [valuePick, setValuePick] = useState<string>('__auto__')
 
   const { data: ds, isLoading } = useQuery({
     queryKey: ['dataset', datasetId],
@@ -77,16 +101,34 @@ function DatasetDetailInner({ datasetId }: { datasetId: number }) {
   const runMutation = useMutation({
     mutationFn: async () => {
       if (!ds?.columns?.length) throw new Error('Dataset not loaded')
-      const resolved = (target.trim() || pickDefaultTarget(ds.columns)).trim()
-      if (!resolved) throw new Error('No target column')
+      const resolvedTarget = (target.trim() || pickDefaultTarget(ds.columns)).trim()
+      if (!resolvedTarget) throw new Error('No target column')
+
+      let vc: string | undefined
+      const autoVc = pickDefaultValueColumn(ds.columns, resolvedTarget)
+
+      if (!valuePick || valuePick === '__auto__') {
+        vc = autoVc || undefined
+      } else if (valuePick === '__none__') {
+        vc = undefined
+      } else {
+        vc = valuePick
+      }
+
+      if (vc === resolvedTarget) {
+        vc = undefined
+      }
+
       const { data } = await api.post<Analysis>(`/datasets/${datasetId}/analyses`, {
-        target: resolved,
+        target: resolvedTarget,
         test_size: 0.2,
+        ...(vc ? { value_column: vc } : {}),
       })
       return data
     },
     onSuccess: (a) => {
       void qc.invalidateQueries({ queryKey: ['analysis', a.id] })
+      void qc.invalidateQueries({ queryKey: ['analyses'] })
       navigate(`/analyses/${a.id}`)
     },
   })
@@ -114,6 +156,9 @@ function DatasetDetailInner({ datasetId }: { datasetId: number }) {
   const hint = ds.columns.find((c) => c.name === effectiveTarget)
   const taskHint = hint ? inferTaskHint(hint) : ''
 
+  const numericSelectable = ds.columns.filter((c) => isNumericColumn(c) && c.name !== effectiveTarget)
+  const suggestedValue = pickDefaultValueColumn(ds.columns, effectiveTarget)
+
   return (
     <div className="space-y-10">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -124,10 +169,14 @@ function DatasetDetailInner({ datasetId }: { datasetId: number }) {
           >
             ← Datasets
           </Link>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{ds.name}</h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            {ds.rows.toLocaleString()} rows · {ds.cols} columns · {ds.file_format.toUpperCase()}
+          <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 dark:text-white">{ds.name}</h1>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            {ds.rows.toLocaleString()} rows - {ds.cols} columns - {ds.file_format.toUpperCase()}
           </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <StatusBadge tone="info">Step 2 - Analyze</StatusBadge>
+            {taskHint && <StatusBadge tone="success">{taskHint}</StatusBadge>}
+          </div>
         </div>
         <Button
           variant="danger"
@@ -142,11 +191,11 @@ function DatasetDetailInner({ datasetId }: { datasetId: number }) {
       </div>
 
       <section>
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Schema</h2>
-        <Card padding="none" className="mt-3 overflow-hidden">
+        <SectionHeader title="Schema readiness" description="Review column types, null rates, and cardinality before choosing the target." />
+        <Card padding="none" tone="strong" className="mt-4 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
+              <thead className="border-b border-slate-200 bg-white/70 dark:border-slate-800 dark:bg-slate-900/70">
                 <tr>
                   <th className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300">Column</th>
                   <th className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300">Type</th>
@@ -176,11 +225,11 @@ function DatasetDetailInner({ datasetId }: { datasetId: number }) {
 
       {preview && preview.rows.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Preview</h2>
-          <Card padding="none" className="mt-3">
+          <SectionHeader title="Data preview" description="Spot check the first rows before running the RCA model." />
+          <Card padding="none" tone="strong" className="mt-4">
             <div className="max-h-80 overflow-auto">
               <table className="min-w-full text-left text-xs">
-                <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/80">
+                <thead className="sticky top-0 z-10 border-b border-slate-200 bg-white/85 dark:border-slate-800 dark:bg-slate-900/90">
                   <tr>
                     {preview.columns.map((col) => (
                       <th key={col} className="whitespace-nowrap px-3 py-2 font-semibold text-slate-700 dark:text-slate-300">
@@ -206,21 +255,24 @@ function DatasetDetailInner({ datasetId }: { datasetId: number }) {
         </section>
       )}
 
-      <Card padding="lg" elevated>
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Run analysis</h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+      <Card padding="lg" tone="info" elevated>
+        <h2 className="text-xl font-black tracking-tight text-slate-950 dark:text-white">Run root-cause analysis</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
           Select the target variable. We infer classification vs regression from the column.
         </p>
-        <div className="mt-6 flex flex-wrap items-end gap-4">
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <div>
-            <label htmlFor="target-col" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+            <label htmlFor="target-col" className="block text-sm font-bold text-slate-700 dark:text-slate-200">
               Target column
             </label>
             <select
               id="target-col"
-              className="mt-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              className="mt-1.5 w-full rounded-2xl border border-white/70 bg-white/85 px-4 py-3 text-sm text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
               value={effectiveTarget}
-              onChange={(e) => setTarget(e.target.value)}
+              onChange={(e) => {
+                setTarget(e.target.value)
+                setValuePick('__auto__')
+              }}
             >
               {ds.columns.map((c) => (
                 <option key={c.name} value={c.name}>
@@ -229,10 +281,35 @@ function DatasetDetailInner({ datasetId }: { datasetId: number }) {
               ))}
             </select>
           </div>
+          <div>
+            <label htmlFor="value-col" className="block text-sm font-bold text-slate-700 dark:text-slate-200">
+              Value column (optional)
+            </label>
+            <select
+              id="value-col"
+              className="mt-1.5 w-full rounded-2xl border border-white/70 bg-white/85 px-4 py-3 text-sm text-slate-900 shadow-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100"
+              disabled={numericSelectable.length === 0}
+              value={valuePick}
+              onChange={(e) => setValuePick(e.target.value)}
+            >
+              <option value="__auto__">
+                Auto ({suggestedValue || 'detect numeric column'})
+              </option>
+              <option value="__none__">Skip revenue/value KPI overlay</option>
+              {numericSelectable.map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {taskHint && (
-            <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              Inferred: {taskHint}
-            </span>
+            <StatusBadge tone="success">Inferred: {taskHint}</StatusBadge>
+          )}
+          {numericSelectable.length === 0 && (
+            <StatusBadge tone="warning">No value overlay</StatusBadge>
           )}
         </div>
         {runMutation.isError && (

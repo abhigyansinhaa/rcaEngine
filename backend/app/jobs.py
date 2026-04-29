@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from app.ml import messages as user_msg
 from app.ml.explain import compute_explanations_with_fallback, shap_json_dump
 from app.ml.insights import aggregate_shap_by_column, build_insights, insights_to_json
-from app.ml.pipeline import train_model_with_fallback
+from app.ml.kpis import compute_kpis
+from app.ml.pipeline import RANDOM_STATE, train_model_with_fallback, training_work_frame
 from app.ml.profile import profile_dataset_for_target
 from app.ml.recommend import build_recommendations
 from app.models import Analysis, Dataset
@@ -138,6 +139,31 @@ def run_analysis(db: Session, analysis_id: int, test_size: float, max_rows: int 
             "fallbacks": fallback_notes,
             "user_message": user_message,
         }
+
+        work, _ = training_work_frame(df, analysis.target, max_rows, RANDOM_STATE)
+
+        value_col = analysis.value_column
+        if value_col and value_col not in work.columns:
+            value_col = None
+        if value_col and value_col == analysis.target:
+            value_col = None
+
+        try:
+            kpis = compute_kpis(
+                work,
+                analysis.target,
+                result.task_type,
+                result.model,
+                result.label_encoder,
+                shap_rows,
+                result.metrics,
+                result.cv_metrics,
+                value_col,
+                art_dir,
+            )
+            report["kpis"] = kpis
+        except Exception as e:
+            logger.warning("KPI computation failed for analysis %s: %s", analysis_id, e, exc_info=True)
 
         analysis.task_type = result.task_type
         analysis.metrics_json = json.dumps(result.metrics)
