@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { isAxiosError } from 'axios'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
+import { DatasetKpiDashboard } from '../components/dataset/DatasetKpiDashboard'
 import { Button, Card, LoadingState, SectionHeader, StatusBadge } from '../components/ui'
 import type { Analysis, ColumnSchema, Dataset } from '../types'
 
@@ -129,7 +130,8 @@ function DatasetDetailInner({ datasetId }: { datasetId: number }) {
     onSuccess: (a) => {
       void qc.invalidateQueries({ queryKey: ['analysis', a.id] })
       void qc.invalidateQueries({ queryKey: ['analyses'] })
-      navigate(`/analyses/${a.id}`)
+      void qc.invalidateQueries({ queryKey: ['datasetAnalyses', datasetId] })
+      navigate(`/datasets/${datasetId}#dataset-kpi-dashboard`)
     },
   })
 
@@ -326,6 +328,8 @@ function DatasetDetailInner({ datasetId }: { datasetId: number }) {
           {runMutation.isPending ? 'Starting…' : 'Run root-cause analysis'}
         </Button>
       </Card>
+
+      <DatasetKpiDashboard datasetId={datasetId} datasetName={ds.name} />
     </div>
   )
 }

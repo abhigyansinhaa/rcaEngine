@@ -174,6 +174,24 @@ def list_analyses(
     return [AnalysisListItem.model_validate(_analysis_list_item(a, ds.name)) for a, ds in rows]
 
 
+@router.get("/datasets/{dataset_id}/analyses", response_model=list[AnalysisListItem])
+def list_dataset_analyses(
+    dataset_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Any:
+    ds = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.user_id == current_user.id).first()
+    if ds is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    rows = (
+        db.query(Analysis)
+        .filter(Analysis.dataset_id == ds.id)
+        .order_by(Analysis.created_at.desc())
+        .all()
+    )
+    return [AnalysisListItem.model_validate(_analysis_list_item(a, ds.name)) for a in rows]
+
+
 @router.get("/analyses/{analysis_id}", response_model=AnalysisOut)
 def get_analysis(
     analysis_id: int,

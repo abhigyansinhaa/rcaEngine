@@ -56,7 +56,7 @@ Open http://localhost:5000 — the dev server proxies `/api` and `/artifacts` to
 2. **Upload** a CSV or Parquet file.  
 3. Open the dataset, **select the target column**, optionally pick a **numeric value column** (revenue / LTV / ARPU-style) for KPIs, and run **Root-cause analysis**.  
 4. Wait for status **completed** (the results page polls automatically).  
-5. Open the **Dashboard** for **business KPIs**: risk concentration (Pareto), counterfactual driver rollups (estimate), segmented exposure, modeled reliability—and commercial overlays when a value column is set. On the dataset page still see SHAP narratives, downloads, recommendations.  
+5. Open the **dataset page** for its **business KPIs**: risk concentration (Pareto), counterfactual driver rollups (estimate), segmented exposure, modeled reliability—and commercial overlays when a value column is set. Each dataset has its own KPI dashboard scoped to that dataset's analyses; the home **Dashboard** is a workspace overview that links into each dataset.  
 
 ## API overview
 
@@ -72,7 +72,8 @@ Open http://localhost:5000 — the dev server proxies `/api` and `/artifacts` to
 | POST | `/api/datasets/{id}/profile` | `{ "target" }` — suitability checks (no training) |
 | DELETE | `/api/datasets/{id}` | Delete dataset + analyses |
 | POST | `/api/datasets/{id}/analyses` | `{ target, test_size?, max_rows?, value_column? }` |
-| GET | `/api/analyses` | List analyses (+ compact KPI summary for completed rows) |
+| GET | `/api/datasets/{id}/analyses` | List analyses for one dataset (+ compact KPI summary) |
+| GET | `/api/analyses` | List analyses across the workspace (+ compact KPI summary for completed rows) |
 | GET | `/api/analyses/{id}` | Analysis status and results (`report.kpis`) |
 | GET | `/artifacts/{id}/shap_summary.png` | SHAP summary image |
 
